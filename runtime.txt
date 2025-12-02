@@ -1,0 +1,3 @@
+# Python Runtime for Streamlit Community Cloud
+# Specify Python version
+python-3.11.5

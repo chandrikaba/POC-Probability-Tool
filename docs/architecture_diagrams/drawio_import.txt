@@ -1,0 +1,166 @@
+DEAL WIN PROBABILITY TOOL - DIAGRAMS FOR DRAW.IO
+==================================================
+
+INSTRUCTIONS:
+1. Open https://app.diagrams.net/ (Draw.io)
+2. Go to Arrange > Insert > Advanced > Mermaid...
+3. Copy one of the blocks below and paste it into the dialog box.
+4. Click Insert.
+
+--------------------------------------------------------------------------------
+DIAGRAM 1: HIGH-LEVEL ARCHITECTURE
+--------------------------------------------------------------------------------
+graph TB
+    subgraph "Frontend Layer"
+        UI[Streamlit UI<br>(app.py)]
+    end
+
+    subgraph "API Layer"
+        API[FastAPI Backend<br>(api.py)]
+    end
+
+    subgraph "Core Logic Layer"
+        Gen[Data Generator<br>(src/generate_synthetic_data.py)]
+        Train[Model Trainer<br>(src/train_xgb_classifier.py)]
+        Pred[Predictor<br>(src/predict_xgb_classifier.py)]
+    end
+
+    subgraph "Storage Layer"
+        subgraph "Data"
+            Input[Input Data<br>(data/input/)]
+            Output[Output Data<br>(data/output/)]
+        end
+        subgraph "Models"
+            ModelFile[XGBoost Model<br>(models/xgb_classifier.pkl)]
+            EncoderFile[Label Encoder<br>(models/label_encoder.pkl)]
+        end
+    end
+
+    %% Interactions
+    UI -->|Calls via Subprocess| Gen
+    UI -->|Calls via Subprocess| Train
+    UI -->|Calls via Subprocess| Pred
+    
+    API -->|Calls via Subprocess| Gen
+    API -->|Calls via Subprocess| Train
+    API -->|Calls via Subprocess| Pred
+
+    Gen -->|Writes| Output
+    Train -->|Reads| Output
+    Train -->|Saves| ModelFile
+    Train -->|Saves| EncoderFile
+    
+    Pred -->|Reads| Input
+    Pred -->|Loads| ModelFile
+    Pred -->|Loads| EncoderFile
+    Pred -->|Writes| Output
+
+
+--------------------------------------------------------------------------------
+DIAGRAM 2: CLASS DIAGRAM
+--------------------------------------------------------------------------------
+classDiagram
+    class FastAPI_App {
+        +generate_synthetic_data()
+        +train_model()
+        +predict_deal_outcomes(file)
+        +health_check()
+    }
+
+    class Streamlit_UI {
+        +render_sidebar()
+        +render_data_generation_page()
+        +render_training_page()
+        +render_prediction_page()
+    }
+
+    class DataGenerator_Script {
+        +generate_records(n)
+        +save_to_excel()
+    }
+
+    class ModelTrainer_Script {
+        +load_data()
+        +preprocess_data()
+        +train_pipeline()
+        +save_model()
+        +save_encoder()
+    }
+
+    class Predictor_Script {
+        +load_model()
+        +align_columns()
+        +impute_missing()
+        +predict()
+        +save_results()
+    }
+
+    %% Pydantic Models
+    class HealthResponse {
+        +str status
+        +str message
+        +bool model_loaded
+    }
+
+    class SyntheticDataResponse {
+        +bool success
+        +str message
+        +int records_generated
+        +str output_path
+    }
+
+    class TrainingResponse {
+        +bool success
+        +str message
+        +float validation_accuracy
+        +str model_path
+    }
+
+    class PredictionResponse {
+        +bool success
+        +str message
+        +str predictions_file
+        +int total_records
+    }
+
+    %% Relationships
+    FastAPI_App ..> SyntheticDataResponse : returns
+    FastAPI_App ..> TrainingResponse : returns
+    FastAPI_App ..> PredictionResponse : returns
+    FastAPI_App ..> HealthResponse : returns
+
+    FastAPI_App --> DataGenerator_Script : executes
+    FastAPI_App --> ModelTrainer_Script : executes
+    FastAPI_App --> Predictor_Script : executes
+
+
+--------------------------------------------------------------------------------
+DIAGRAM 3: SEQUENCE DIAGRAM - PREDICTION FLOW
+--------------------------------------------------------------------------------
+sequenceDiagram
+    participant User
+    participant UI_API as Streamlit UI / FastAPI
+    participant Script as predict_xgb_classifier.py
+    participant FS as File System
+
+    User->>UI_API: Upload Excel File
+    UI_API->>FS: Save temp input file
+    UI_API->>Script: Execute via Subprocess
+    activate Script
+    Script->>FS: Load Input File
+    Script->>FS: Load Trained Model & Label Encoder
+    Script->>FS: Read Synthetic Data (for Schema)
+    
+    rect rgb(240, 248, 255)
+        note right of Script: Robust Preprocessing
+        Script->>Script: Detect Missing Columns
+        Script->>Script: Fill Defaults (0.0 for Numeric, "UNKNOWN" for Text)
+        Script->>Script: Enforce Data Types based on Schema
+        Script->>Script: Impute Missing Values (Median/Unknown)
+    end
+    
+    Script->>Script: Generate Predictions & Probabilities
+    Script->>FS: Save predictions.xlsx
+    Script-->>UI_API: Return Result Path
+    deactivate Script
+    UI_API-->>User: Show Results & Download Link

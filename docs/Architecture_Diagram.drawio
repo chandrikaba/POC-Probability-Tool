@@ -1,0 +1,200 @@
+<mxfile host="app.diagrams.net" modified="2025-11-27T15:30:00.000Z" agent="5.0" version="22.1.11" etag="architecture-diagram" type="device">
+  <diagram name="System Architecture" id="system-architecture">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- Title -->
+        <mxCell id="title" value="Deal Win Probability Tool - System Architecture" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="20" width="800" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- User Layer -->
+        <mxCell id="user-layer-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="100" y="100" width="1400" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="user-layer-title" value="User Layer" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="120" y="110" width="120" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Users -->
+        <mxCell id="user-web" value="Web Browser User" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="300" y="140" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="user-api" value="API Consumer" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="700" y="140" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="user-postman" value="Postman User" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1100" y="140" width="60" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Frontend Layer -->
+        <mxCell id="frontend-layer-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="100" y="260" width="600" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="frontend-layer-title" value="Frontend Layer (Streamlit)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="120" y="270" width="240" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Streamlit Components -->
+        <mxCell id="streamlit-app" value="Streamlit App&#xa;(app.py)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="150" y="320" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="page-home" value="🏠 Home Page" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="150" y="400" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="page-data" value="📁 Data Gen" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="290" y="400" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="page-train" value="🤖 Training" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="430" y="400" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="page-predict" value="🔮 Predictions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="150" y="460" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="page-about" value="ℹ️ About" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="290" y="460" width="120" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Backend Layer -->
+        <mxCell id="backend-layer-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="750" y="260" width="750" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="backend-layer-title" value="Backend Layer (FastAPI)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="770" y="270" width="240" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- FastAPI Components -->
+        <mxCell id="fastapi-app" value="FastAPI Application&#xa;(api.py)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="800" y="320" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="route-data" value="/generate-synthetic-data" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="800" y="400" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="route-train" value="/train-model" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="400" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="route-predict" value="/predict" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="400" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="route-download" value="/download-predictions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="800" y="460" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="route-health" value="/health" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="460" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="swagger" value="Swagger UI&#xa;/swagger" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="460" width="180" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- Core Business Logic Layer -->
+        <mxCell id="core-layer-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="100" y="580" width="1400" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="core-layer-title" value="Core Business Logic Layer" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="120" y="590" width="280" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Core Modules -->
+        <mxCell id="data-generator" value="Data Generator&#xa;(generate_synthetic_data.py)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="200" y="640" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="model-trainer" value="Model Trainer&#xa;(train_xgb_classifier.py)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="500" y="640" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="predictor" value="Predictor&#xa;(predict_xgb_classifier.py)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="800" y="640" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="helpers" value="Helpers&#xa;(utils/helpers.py)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1100" y="640" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- Data & Model Layer -->
+        <mxCell id="data-layer-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="100" y="800" width="1400" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="data-layer-title" value="Data & Model Storage Layer" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="120" y="810" width="300" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Storage Components -->
+        <mxCell id="input-data" value="Input Data&#xa;(data/input/)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="200" y="860" width="150" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="output-data" value="Output Data&#xa;(data/output/)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="450" y="860" width="150" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="synthetic-data" value="Synthetic Data&#xa;(synthetic_deals.xlsx)" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="700" y="860" width="150" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="model-storage" value="Trained Model&#xa;(models/xgb_classifier.pkl)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="950" y="860" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="predictions" value="Predictions&#xa;(predictions_*.xlsx)" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="860" width="150" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- ML Layer -->
+        <mxCell id="ml-layer-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="100" y="1020" width="1400" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="ml-layer-title" value="Machine Learning Layer" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="120" y="1030" width="260" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- ML Components -->
+        <mxCell id="xgboost" value="XGBoost&#xa;Classifier" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="250" y="1070" width="150" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="sklearn" value="Scikit-learn&#xa;Preprocessing" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="450" y="1070" width="150" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="pandas" value="Pandas&#xa;Data Processing" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="650" y="1070" width="150" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="joblib" value="Joblib&#xa;Model Persistence" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="850" y="1070" width="150" height="50" as="geometry" />
+        </mxCell>
+        
+        <!-- Connections -->
+        <mxCell id="conn1" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="user-web" target="streamlit-app">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="700" y="500" as="sourcePoint" />
+            <mxPoint x="750" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn2" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="user-api" target="fastapi-app">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="700" y="500" as="sourcePoint" />
+            <mxPoint x="750" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn3" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="user-postman" target="swagger">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="700" y="500" as="sourcePoint" />
+            <mxPoint x="750" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- Legend -->
+        <mxCell id="legend-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1250" y="1030" width="220" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-title" value="Legend" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1250" y="1035" width="220" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="legend1" value="Frontend (Streamlit)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1270" y="1065" width="180" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend2" value="Backend (FastAPI)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1270" y="1090" width="180" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend3" value="Data Storage" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=5;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1270" y="1115" width="180" height="20" as="geometry" />
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

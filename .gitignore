@@ -1,0 +1,51 @@
+# Ignore Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment variables
+.env
+.env.local
+
+# Models (optional - uncomment if models are large or sensitive)
+# models/*.pkl
+
+# Data (optional - uncomment if data is sensitive)
+# data/output/*.xlsx
+# data/input/*.xlsx
+
+# Logs
+*.log
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Docker
+.dockerignore
+
+# Streamlit
+.streamlit/secrets.toml

@@ -1,0 +1,70 @@
+# ============================================================================
+# CORE DEPENDENCIES
+# ============================================================================
+
+# Data Processing and Analysis
+pandas>=2.0.0
+numpy>=1.24.0
+openpyxl>=3.1.0
+pyarrow>=14.0.0
+
+# Machine Learning
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+joblib>=1.3.0
+
+# ============================================================================
+# BACKEND DEPENDENCIES
+# ============================================================================
+
+# Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# API Documentation
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# ============================================================================
+# FRONTEND DEPENDENCIES
+# ============================================================================
+
+# UI Framework
+streamlit>=1.28.0
+
+# Visualization (optional but recommended for Streamlit)
+plotly>=5.17.0
+altair>=5.1.0
+
+# ============================================================================
+# OPTIONAL DEPENDENCIES
+# ============================================================================
+
+# Google Gemini API (for advanced data generation)
+google-generativeai>=0.3.0
+
+# Logging and Monitoring
+colorama>=0.4.6
+python-dotenv>=1.0.0
+
+# ============================================================================
+# NOTES
+# ============================================================================
+# 
+# Installation:
+#   pip install -r requirements.txt
+#
+# For development dependencies, see requirements-dev.txt
+#
+# Minimal installation (core only):
+#   pip install pandas scikit-learn xgboost joblib openpyxl
+#
+# Backend only:
+#   pip install -r requirements.txt --no-deps
+#   pip install pandas scikit-learn xgboost joblib openpyxl fastapi uvicorn
+#
+# Frontend only:
+#   pip install -r requirements.txt --no-deps
+#   pip install pandas scikit-learn xgboost joblib openpyxl streamlit
+#

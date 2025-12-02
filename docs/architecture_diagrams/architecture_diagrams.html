@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deal Win Probability Tool - Architecture Diagrams</title>
+    <!-- Import Mermaid.js -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            securityLevel: 'loose',
+            flowchart: { useMaxWidth: false, htmlLabels: true }
+        });
+    </script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 40px;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .diagram-section {
+            background: white;
+            padding: 30px;
+            margin-bottom: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #2980b9;
+            border-left: 5px solid #3498db;
+            padding-left: 15px;
+            margin-top: 0;
+        }
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+            overflow-x: auto;
+        }
+        .instructions {
+            background-color: #e8f6f3;
+            border: 1px solid #a2d9ce;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 30px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Deal Win Probability Tool - Architecture</h1>
+
+    <div class="instructions">
+        <strong>How to use this file:</strong>
+        <p>This page renders the system diagrams directly in your browser. You can print this page to PDF for documentation.</p>
+        <strong>For Draw.io / Diagrams.net:</strong>
+        <p>To edit these diagrams in Draw.io, go to <em>Arrange > Insert > Advanced > Mermaid</em> and paste the code from the sections below.</p>
+    </div>
+
+    <div class="diagram-section">
+        <h2>1. High-Level Architecture</h2>
+        <p>Overview of the system components and their interactions.</p>
+        <div class="mermaid">
+graph TB
+    subgraph "Frontend Layer"
+        UI[Streamlit UI<br>(app.py)]
+    end
+
+    subgraph "API Layer"
+        API[FastAPI Backend<br>(api.py)]
+    end
+
+    subgraph "Core Logic Layer"
+        Gen[Data Generator<br>(src/generate_synthetic_data.py)]
+        Train[Model Trainer<br>(src/train_xgb_classifier.py)]
+        Pred[Predictor<br>(src/predict_xgb_classifier.py)]
+    end
+
+    subgraph "Storage Layer"
+        subgraph "Data"
+            Input[Input Data<br>(data/input/)]
+            Output[Output Data<br>(data/output/)]
+        end
+        subgraph "Models"
+            ModelFile[XGBoost Model<br>(models/xgb_classifier.pkl)]
+            EncoderFile[Label Encoder<br>(models/label_encoder.pkl)]
+        end
+    end
+
+    %% Interactions
+    UI -->|Calls via Subprocess| Gen
+    UI -->|Calls via Subprocess| Train
+    UI -->|Calls via Subprocess| Pred
+    
+    API -->|Calls via Subprocess| Gen
+    API -->|Calls via Subprocess| Train
+    API -->|Calls via Subprocess| Pred
+
+    Gen -->|Writes| Output
+    Train -->|Reads| Output
+    Train -->|Saves| ModelFile
+    Train -->|Saves| EncoderFile
+    
+    Pred -->|Reads| Input
+    Pred -->|Loads| ModelFile
+    Pred -->|Loads| EncoderFile
+    Pred -->|Writes| Output
+        </div>
+    </div>
+
+    <div class="diagram-section">
+        <h2>2. Class Diagram</h2>
+        <p>Logical structure of application components and data models.</p>
+        <div class="mermaid">
+classDiagram
+    class FastAPI_App {
+        +generate_synthetic_data()
+        +train_model()
+        +predict_deal_outcomes(file)
+        +health_check()
+    }
+
+    class Streamlit_UI {
+        +render_sidebar()
+        +render_data_generation_page()
+        +render_training_page()
+        +render_prediction_page()
+    }
+
+    class DataGenerator_Script {
+        +generate_records(n)
+        +save_to_excel()
+    }
+
+    class ModelTrainer_Script {
+        +load_data()
+        +preprocess_data()
+        +train_pipeline()
+        +save_model()
+        +save_encoder()
+    }
+
+    class Predictor_Script {
+        +load_model()
+        +align_columns()
+        +impute_missing()
+        +predict()
+        +save_results()
+    }
+
+    %% Pydantic Models
+    class HealthResponse {
+        +str status
+        +str message
+        +bool model_loaded
+    }
+
+    class SyntheticDataResponse {
+        +bool success
+        +str message
+        +int records_generated
+        +str output_path
+    }
+
+    class TrainingResponse {
+        +bool success
+        +str message
+        +float validation_accuracy
+        +str model_path
+    }
+
+    class PredictionResponse {
+        +bool success
+        +str message
+        +str predictions_file
+        +int total_records
+    }
+
+    %% Relationships
+    FastAPI_App ..> SyntheticDataResponse : returns
+    FastAPI_App ..> TrainingResponse : returns
+    FastAPI_App ..> PredictionResponse : returns
+    FastAPI_App ..> HealthResponse : returns
+
+    FastAPI_App --> DataGenerator_Script : executes
+    FastAPI_App --> ModelTrainer_Script : executes
+    FastAPI_App --> Predictor_Script : executes
+        </div>
+    </div>
+
+    <div class="diagram-section">
+        <h2>3. Sequence Diagrams</h2>
+        
+        <h3>3.1 Data Generation</h3>
+        <div class="mermaid">
+sequenceDiagram
+    participant User
+    participant UI_API as Streamlit UI / FastAPI
+    participant Script as generate_synthetic_data.py
+    participant FS as File System
+
+    User->>UI_API: Request Data Generation
+    UI_API->>Script: Execute via Subprocess
+    activate Script
+    Script->>Script: Generate Random Deal Data
+    Script->>FS: Save to data/output/synthetic_deals.xlsx
+    Script-->>UI_API: Return Success/Failure
+    deactivate Script
+    UI_API-->>User: Show Success Message & Record Count
+        </div>
+
+        <h3>3.2 Model Training</h3>
+        <div class="mermaid">
+sequenceDiagram
+    participant User
+    participant UI_API as Streamlit UI / FastAPI
+    participant Script as train_xgb_classifier.py
+    participant FS as File System
+
+    User->>UI_API: Request Model Training
+    UI_API->>Script: Execute via Subprocess
+    activate Script
+    Script->>FS: Read synthetic_deals.xlsx
+    Script->>Script: Preprocess Data (OneHot/Ordinal Encoding)
+    Script->>Script: Train XGBoost Pipeline
+    Script->>FS: Save models/xgb_classifier.pkl
+    Script->>FS: Save models/label_encoder.pkl
+    Script-->>UI_API: Return Accuracy Metrics
+    deactivate Script
+    UI_API-->>User: Display Accuracy & Model Info
+        </div>
+
+        <h3>3.3 Prediction</h3>
+        <div class="mermaid">
+sequenceDiagram
+    participant User
+    participant UI_API as Streamlit UI / FastAPI
+    participant Script as predict_xgb_classifier.py
+    participant FS as File System
+
+    User->>UI_API: Upload Excel File
+    UI_API->>FS: Save temp input file
+    UI_API->>Script: Execute via Subprocess
+    activate Script
+    Script->>FS: Load Input File
+    Script->>FS: Load Trained Model & Label Encoder
+    Script->>FS: Read Synthetic Data (for Schema)
+    
+    rect rgb(240, 248, 255)
+        note right of Script: Robust Preprocessing
+        Script->>Script: Detect Missing Columns
+        Script->>Script: Fill Defaults (0.0 for Numeric, "UNKNOWN" for Text)
+        Script->>Script: Enforce Data Types based on Schema
+        Script->>Script: Impute Missing Values (Median/Unknown)
+    end
+    
+    Script->>Script: Generate Predictions & Probabilities
+    Script->>FS: Save predictions.xlsx
+    Script-->>UI_API: Return Result Path
+    deactivate Script
+    UI_API-->>User: Show Results & Download Link
+        </div>
+    </div>
+
+</body>
+</html>

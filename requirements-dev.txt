@@ -1,0 +1,65 @@
+# ============================================================================
+# DEVELOPMENT DEPENDENCIES
+# ============================================================================
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.21.0
+httpx>=0.24.0  # For testing FastAPI
+
+# Code Quality
+black>=23.7.0
+flake8>=6.1.0
+isort>=5.12.0
+mypy>=1.5.0
+
+# Type Stubs
+types-requests>=2.31.0
+pandas-stubs>=2.0.0
+
+# Documentation
+mkdocs>=1.5.0
+mkdocs-material>=9.2.0
+
+# Development Tools
+ipython>=8.14.0
+jupyter>=1.0.0
+notebook>=7.0.0
+
+# Debugging
+ipdb>=0.13.13
+pdb++>=0.10.3
+
+# Performance Profiling
+memory-profiler>=0.61.0
+line-profiler>=4.1.0
+
+# Pre-commit Hooks
+pre-commit>=3.3.3
+
+# ============================================================================
+# NOTES
+# ============================================================================
+#
+# Installation:
+#   pip install -r requirements-dev.txt
+#
+# This will install both production and development dependencies
+#
+# Running tests:
+#   pytest
+#   pytest --cov=backend --cov=frontend
+#
+# Code formatting:
+#   black backend/ frontend/
+#   isort backend/ frontend/
+#
+# Linting:
+#   flake8 backend/ frontend/
+#   mypy backend/ frontend/
+#
+# Pre-commit setup:
+#   pre-commit install
+#   pre-commit run --all-files
+#
