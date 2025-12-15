@@ -1,18 +1,17 @@
-# Step 1: Install the Gemini SDK
-
-# Step 2: Import libraries
-import google.generativeai as genai
-import pandas as pd
-import json
 import os
 import random
+import pandas as pd
 
-# Paste your API key here
-os.environ["GOOGLE_API_KEY"] = "AIzaSyCBUNznkpcuvquY25epIuJvDAOYLMHVg1k"
+# STEP 1: Load your Excel file
+input_file = "data/input/Data-Input.xlsx"   # Path to input file
+df = pd.ExcelFile(input_file)
 
-# Configure Gemini client
-genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-model = genai.GenerativeModel("gemini-flash-latest")
+# Pick the first sheet (or loop through all)
+sheet_name = df.sheet_names[0]
+data = df.parse(sheet_name)
+
+# STEP 2: Extract schema (column names)
+columns = list(data.columns)
 
 # Define schema from Excel (simplified for illustration)
 valid_tags = [
@@ -144,15 +143,23 @@ def generate_record(index):
     }
 
 
-# Generate 30 records
-synthetic_data = [generate_record(i) for i in range(1, 31)]
+# STEP 4: Generate 100 synthetic records using the generate_record function
+print("Generating 100 synthetic records...")
+synthetic_records = []
+for i in range(1, 101):
+    record = generate_record(i)
+    synthetic_records.append(record)
+    if i % 10 == 0:
+        print(f"Generated {i}/100 records...")
 
-# Convert to DataFrame
-df = pd.DataFrame(synthetic_data)
+# STEP 5: Convert to DataFrame
+synthetic_df = pd.DataFrame(synthetic_records)
 
-# Display or export
-print(df)
-output_path = os.path.join(os.path.dirname(__file__), "..", "data", "output", "synthetic_deals.xlsx")
-os.makedirs(os.path.dirname(output_path), exist_ok=True)
-df.to_excel(output_path, index=False)
-print(f"Synthetic data written to {output_path}")
+# STEP 6: Save synthetic data
+output_file = "data/output/Synthetic_Data.xlsx"
+os.makedirs(os.path.dirname(output_file), exist_ok=True)
+synthetic_df.to_excel(output_file, index=False)
+print(f"\nSynthetic data generation complete!")
+print(f"Generated {len(synthetic_df)} records")
+print(f"Saved to: {output_file}")
+
