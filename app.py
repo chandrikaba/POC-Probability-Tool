@@ -198,7 +198,7 @@ elif page == "📁 Data Generation":
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        num_records = st.slider("Number of records to generate:", 10, 100, 100)
+        num_records = st.slider("Number of records to generate:", 10, 1000, 1000)
     
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)

@@ -19,7 +19,25 @@ python src/train_xgb_classifier.py
 ```
 """
 
+import logging
 import os
+from datetime import datetime
+
+# Configure logging
+log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, "training.log")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 import pandas as pd
 import numpy as np
 import joblib
@@ -121,10 +139,9 @@ else:
 xgb_clf = xgb.XGBClassifier(
     objective=objective, 
     eval_metric=eval_metric, 
-    use_label_encoder=False, 
     n_jobs=-1, 
     random_state=42,
-    n_estimators=500
+    n_estimators=1000  # Increased from 500
 )
 
 pipeline = Pipeline([
@@ -137,26 +154,27 @@ pipeline.fit(X_train, y_train)
 preds = pipeline.predict(X_test)
 probs = pipeline.predict_proba(X_test)
 
-print("\nBaseline classification metrics:")
-print("Accuracy :", accuracy_score(y_test, preds))
-print("Precision:", precision_score(y_test, preds, average='weighted', zero_division=0))
-print("Recall   :", recall_score(y_test, preds, average='weighted', zero_division=0))
-print("F1-score :", f1_score(y_test, preds, average='weighted', zero_division=0))
-print("\nConfusion Matrix:\n", confusion_matrix(y_test, preds))
-print("\nClassification Report:\n", classification_report(y_test, preds, target_names=le.classes_, zero_division=0))
+logger.info("\nBaseline classification metrics:")
+logger.info(f"Accuracy : {accuracy_score(y_test, preds)}")
+logger.info(f"Precision: {precision_score(y_test, preds, average='weighted', zero_division=0)}")
+logger.info(f"Recall   : {recall_score(y_test, preds, average='weighted', zero_division=0)}")
+logger.info(f"F1-score : {f1_score(y_test, preds, average='weighted', zero_division=0)}")
+logger.info(f"\nConfusion Matrix:\n{confusion_matrix(y_test, preds)}")
+logger.info(f"\nClassification Report:\n{classification_report(y_test, preds, target_names=le.classes_, zero_division=0)}")
 
 
 # 10. Optional tuning (can be slow). Set do_tuning=True to run.
-do_tuning = False
+do_tuning = True
 if do_tuning:
     param_dist = {
-        "model__n_estimators": [100, 200, 400],
-        "model__max_depth": [3, 5, 7],
-        "model__learning_rate": [0.01, 0.05, 0.1],
+        "model__n_estimators": [500, 1000, 1500],  # Increased range
+        "model__max_depth": [3, 5, 7, 9],
+        "model__learning_rate": [0.01, 0.05, 0.1, 0.2],
         "model__subsample": [0.6, 0.8, 1.0],
-        "model__colsample_bytree": [0.5, 0.7, 1.0],
-        "model__reg_alpha": [0, 0.1, 1],
-        "model__reg_lambda": [1, 5, 10],
+        "model__colsample_bytree": [0.5, 0.7, 0.9, 1.0],
+        "model__reg_alpha": [0, 0.1, 0.5, 1],
+        "model__reg_lambda": [1, 5, 10, 20],
+        "model__min_child_weight": [1, 3, 5]
     }
     search = RandomizedSearchCV(
         pipeline,

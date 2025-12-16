@@ -84,73 +84,118 @@ l1_to_l2 = {
 
 # Synthetic record generator
 def generate_record(index):
-   primary_l1 = random.choice(list(l1_to_l2.keys()))
-   secondary_l1 = random.choice(list(l1_to_l2.keys()))
-   tertiary_l1 = random.choice(list(l1_to_l2.keys()))
+    # 1. Generate Features first
+    sbu = random.choice(["Europe", "IMEA", "APJ", "ASV"])
+    account_name = random.choice(["HSBC", "MOHRE", "Cummins", "Cadent", "GSK", "Etihad"])
+    type_of_business = random.choice(["EE", "EN", "NN"])
+    tcv = round(random.uniform(5, 100), 2)
+    
+    if tcv < 250:
+        deal_size_bucket = "<250M"
+    else:
+        deal_size_bucket = ">=250M"
 
-   primary_l2 = random.choice(l1_to_l2[primary_l1])
-   secondary_l2 = random.choice(l1_to_l2[secondary_l1])
-   tertiary_l2 = random.choice(l1_to_l2[tertiary_l1])
+    primary_l1 = random.choice(list(l1_to_l2.keys()))
+    secondary_l1 = random.choice(list(l1_to_l2.keys()))
+    tertiary_l1 = random.choice(list(l1_to_l2.keys()))
 
-   deal_status = random.choice(["Won", "Lost", "Aborted"])
-   
-   tcv = round(random.uniform(5, 100), 2)
-   
-   if(tcv<250):
-    deal_size_bucket = "<250M"
-   else:
-    deal_size_bucket = ">=250M"
+    primary_l2 = random.choice(l1_to_l2[primary_l1])
+    secondary_l2 = random.choice(l1_to_l2[secondary_l1])
+    tertiary_l2 = random.choice(l1_to_l2[tertiary_l1])
+    
+    lowest_price = random.choice(["Y", "N"])
 
- # Generate realistic remarks
-   if deal_status == "Won":
-       remarks = f"Won due to strong {primary_l1.lower()} and compelling {secondary_l1.lower()} story. TCV ${tcv} validated."
-   elif deal_status == "Lost":
-       remarks = f"Lost due to gaps in {primary_l2.lower()} and competitive pressure on {secondary_l2.lower()}."
-   else:
-       remarks = f"Aborted due to qualification issues or lack of alignment in {tertiary_l2.lower()}."
-   print(f"Deal Status: {deal_status} | Type: {type(deal_status)}")
-   print(remarks)
-   
-   return {
-       "CRM ID": f"CRM{300000 + index}",
-       "SBU": random.choice(["Europe", "IMEA", "APJ", "ASV"]),
-       "Qtr of closure":random.choice(["Q1'25","Q2'25","Q1'24","Q2'24","Q3'25","Q4'24" ]),
-       "Deal Status": deal_status,
-       "Account Name": random.choice(["HSBC", "MOHRE", "Cummins", "Cadent", "GSK", "Etihad"]),
-       "Opportunity Name": f"Opportunity {index}",
-       "Expected TCV ($Mn)": round(random.uniform(5, 100), 2),
-       "Deal Size bucket": deal_size_bucket,
-       "Type of Business": random.choice(["EE", "EN", "NN"]),
-       "Primary L1": primary_l1,
-       "Primary L2": primary_l2,
-       "Secondary L1": secondary_l1,
-       "Secondary L2": secondary_l2,
-       "Tertiary L1": tertiary_l1,
-       "Tertiary L2": tertiary_l2,
-       "Detailed Remarks": remarks,
-       "Bid Qualification (BQ)  Score": None,
-       "Winnability/ BQ  Feedback": None,
-       "SBU Head Involved": None,
-       "SL Heads Involved": None,
-       "Were we the lowest price? Y/N":random.choice(["Y","N"]),
-       "Bid Timeline": f"Q{random.randint(1,4)}'25",
-       "Bid-Team size":0,
-       "Deal Scope":"",
-       "DD":"",
-       "EA":"",
+    # 2. Calculate Win Probability Score (Logic for ML to learn)
+    win_score = 50  # Base score
+
+    # SBU Impact
+    if sbu in ["Europe", "IMEA"]:
+        win_score += 15
+    elif sbu == "APJ":
+        win_score -= 5
+
+    # TCV Impact (Smaller deals easier to win)
+    if tcv < 30:
+        win_score += 10
+    elif tcv > 80:
+        win_score -= 10
+
+    # Business Type Impact
+    if type_of_business == "EE":  # Existing/Existing
+        win_score += 20
+    elif type_of_business == "NN": # New/New
+        win_score -= 15
+
+    # L1 Factor Impact
+    if primary_l1 == "Strategic_Initiatives":
+        win_score += 15
+    elif primary_l1 == "Commercials":
+        win_score -= 5
+
+    # Price Impact
+    if lowest_price == "Y":
+        win_score += 20
+    
+    # Random noise (+/- 15)
+    win_score += random.randint(-15, 15)
+
+    # 3. Assign Status based on Score
+    if win_score > 75:
+        deal_status = "Won"
+    elif win_score < 40:
+        deal_status = "Lost"
+    else:
+        # Middle range can be any, but weighted
+        deal_status = random.choices(["Won", "Lost", "Aborted"], weights=[20, 50, 30])[0]
+
+    # Generate realistic remarks based on outcome
+    if deal_status == "Won":
+        remarks = f"Won due to strong {primary_l1.lower()} and compelling {secondary_l1.lower()} story. TCV ${tcv} validated."
+    elif deal_status == "Lost":
+        remarks = f"Lost due to gaps in {primary_l2.lower()} and competitive pressure on {secondary_l2.lower()}."
+    else:
+        remarks = f"Aborted due to qualification issues or lack of alignment in {tertiary_l2.lower()}."
+
+    return {
+        "CRM ID": f"CRM{300000 + index}",
+        "SBU": sbu,
+        "Qtr of closure": random.choice(["Q1'25","Q2'25","Q1'24","Q2'24","Q3'25","Q4'24"]),
+        "Deal Status": deal_status,
+        "Account Name": account_name,
+        "Opportunity Name": f"Opportunity {index}",
+        "Expected TCV ($Mn)": tcv,
+        "Deal Size bucket": deal_size_bucket,
+        "Type of Business": type_of_business,
+        "Primary L1": primary_l1,
+        "Primary L2": primary_l2,
+        "Secondary L1": secondary_l1,
+        "Secondary L2": secondary_l2,
+        "Tertiary L1": tertiary_l1,
+        "Tertiary L2": tertiary_l2,
+        "Detailed Remarks": remarks,
+        "Bid Qualification (BQ)  Score": None,
+        "Winnability/ BQ  Feedback": None,
+        "SBU Head Involved": None,
+        "SL Heads Involved": None,
+        "Were we the lowest price? Y/N": lowest_price,
+        "Bid Timeline": f"Q{random.randint(1,4)}'25",
+        "Bid-Team size": 0,
+        "Deal Scope": "",
+        "DD": "",
+        "EA": "",
        "Client Partner/ Opp. Owner":"",
        "BM":""    
     }
 
 
-# STEP 4: Generate 100 synthetic records using the generate_record function
-print("Generating 100 synthetic records...")
+# STEP 4: Generate 1000 synthetic records using the generate_record function
+print("Generating 1000 synthetic records...")
 synthetic_records = []
-for i in range(1, 101):
+for i in range(1, 1001):
     record = generate_record(i)
     synthetic_records.append(record)
-    if i % 10 == 0:
-        print(f"Generated {i}/100 records...")
+    if i % 50 == 0:
+        print(f"Generated {i}/1000 records...")
 
 # STEP 5: Convert to DataFrame
 synthetic_df = pd.DataFrame(synthetic_records)
@@ -158,8 +203,27 @@ synthetic_df = pd.DataFrame(synthetic_records)
 # STEP 6: Save synthetic data
 output_file = "data/output/Synthetic_Data.xlsx"
 os.makedirs(os.path.dirname(output_file), exist_ok=True)
-synthetic_df.to_excel(output_file, index=False)
-print(f"\nSynthetic data generation complete!")
-print(f"Generated {len(synthetic_df)} records")
-print(f"Saved to: {output_file}")
+
+try:
+    synthetic_df.to_excel(output_file, index=False)
+    print(f"\nSynthetic data generation complete!")
+    print(f"Generated {len(synthetic_df)} records")
+    print(f"Saved to: {output_file}")
+except PermissionError:
+    # File is locked (probably open in Excel), save with timestamp
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_file = f"data/output/Synthetic_Data_{timestamp}.xlsx"
+    synthetic_df.to_excel(backup_file, index=False)
+    print(f"\n[WARNING] Could not save to {output_file} (file is open)")
+    print(f"[SUCCESS] Saved to backup file: {backup_file}")
+    print(f"Generated {len(synthetic_df)} records")
+    
+# Also save as synthetic_deals.xlsx for Streamlit compatibility
+try:
+    synthetic_deals_file = "data/output/synthetic_deals.xlsx"
+    synthetic_df.to_excel(synthetic_deals_file, index=False)
+    print(f"[SUCCESS] Also saved to: {synthetic_deals_file}")
+except PermissionError:
+    print(f"[WARNING] Could not save to {synthetic_deals_file} (file is open)")
 
