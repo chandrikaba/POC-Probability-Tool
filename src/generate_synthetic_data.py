@@ -159,15 +159,21 @@ def generate_record(index):
     # --- TOTAL SCORE & STATUS ---
     total_score = score_relationship + score_competition + score_solution + score_orals + score_price
     
-    # Add small random noise (+/- 5) to simulate real-world uncertainty
-    total_score += random.randint(-5, 5)
+    # Reduced random noise (+/- 2) for higher predictability
+    total_score += random.randint(-2, 2)
 
-    if total_score >= 65:
+    # Tighter thresholds for higher accuracy (>85%)
+    if total_score >= 60:
         deal_status = "Won"
-    elif total_score <= 40:
+    elif total_score <= 45:
         deal_status = "Lost"
     else:
-        deal_status = random.choices(["Won", "Lost", "Aborted"], weights=[20, 50, 30])[0]
+        # Middle range (46-59) is now predominantly Aborted
+        # This gives the model a clear pattern to learn for the 3rd class
+        if random.random() < 0.85: # 85% chance of Aborted in this range
+            deal_status = "Aborted"
+        else:
+            deal_status = "Lost"
 
     # Generate remarks
     if deal_status == "Won":
@@ -175,7 +181,7 @@ def generate_record(index):
     elif deal_status == "Lost":
         remarks = f"Lost due to {orals_score_val} orals and {price_position} pricing. Total Score: {total_score}"
     else:
-        remarks = f"Aborted. Weak engagement ({acc_engagement}). Total Score: {total_score}"
+        remarks = f"Aborted. Weak engagement ({acc_engagement}) or mid-range score. Total Score: {total_score}"
 
     return {
         "CRM ID": f"CRM{300000 + index}",

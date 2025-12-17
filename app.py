@@ -298,10 +298,19 @@ elif page == "🤖 Model Training":
                         
                         # Try to extract accuracy from output
                         accuracy = "N/A"
-                        if "Validation Accuracy:" in result.stdout:
+                        # Look for "Accuracy :" in the output
+                        if "Accuracy :" in result.stdout:
                             try:
-                                accuracy_line = [line for line in result.stdout.split('\n') if 'Validation Accuracy:' in line][0]
-                                accuracy = accuracy_line.split(':')[1].strip()
+                                # Get all lines with accuracy
+                                accuracy_lines = [line for line in result.stdout.split('\n') if 'Accuracy :' in line]
+                                if accuracy_lines:
+                                    # Take the last one (final accuracy)
+                                    accuracy_line = accuracy_lines[-1]
+                                    # Format is "Accuracy : 0.85" or similar
+                                    accuracy = accuracy_line.split(':')[1].strip()
+                                    # Convert to percentage
+                                    acc_val = float(accuracy)
+                                    accuracy = f"{acc_val:.2%}"
                             except:
                                 pass
                         
@@ -484,7 +493,16 @@ elif page == "🔮 Predictions":
                             
                             # Show results
                             st.markdown("### 📊 Prediction Results")
-                            st.dataframe(result_df, use_container_width=True)
+                            
+                            # Filter columns for display
+                            display_cols = ["CRM ID", "Account Name", "Predicted Deal Status"]
+                            # Add probability columns dynamically based on classes
+                            prob_cols = [col for col in result_df.columns if col.startswith("Probability_")]
+                            display_cols.extend(prob_cols)
+                            
+                            # Ensure columns exist before selecting
+                            valid_cols = [c for c in display_cols if c in result_df.columns]
+                            st.dataframe(result_df[valid_cols], use_container_width=True)
                             
                             # Statistics
                             col1, col2, col3, col4 = st.columns(4)
