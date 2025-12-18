@@ -447,18 +447,53 @@ elif page == "🔮 Predictions":
                                 X_input[col] = X_input[col].replace({'nan': np.nan, 'None': np.nan, '': np.nan, 'NaN': np.nan})
                                 
                             # --- BUSINESS LOGIC: Explicit Ordinal Mapping (Must match training) ---
+                            # --- BUSINESS LOGIC: Explicit Ordinal Mapping (Must match training) ---
+                            # Expanded to accept both full strings and simple keywords for flexibility
                             ordinal_mappings = {
-                                "Account Engagement": {"High (Existing+Good)": 3, "Medium (Existing+Poor)": 2, "Low (New Account)": 1},
-                                "Client Relationship": {"Strong": 3, "Neutral": 2, "Weak": 1},
-                                "Deal Coach": {"Active & Available": 3, "Passive": 2, "Not Available": 1},
-                                "Bidder Rank": {"Top": 3, "Middle": 2, "Bottom": 1},
-                                "Incumbency Share": {"High (>50%)": 3, "Medium (20-50%)": 2, "Low (<20%)": 1, "None": 0},
-                                "References": {"Strong (Domain+Tech)": 3, "Average": 2, "Weak/None": 1},
-                                "Solution Strength": {"Strong (Covers all)": 3, "Average (Gaps)": 2, "Weak": 1},
-                                "Client Impression": {"Positive": 3, "Neutral": 2, "Negative": 1},
-                                "Orals Score": {"Strong": 3, "At Par": 2, "Weak": 1},
-                                "Price Alignment": {"Aligned": 3, "Deviating": 2, "No Intel": 1},
-                                "Price Position": {"Lowest": 3, "Competitive": 2, "Expensive": 1}
+                                "Account Engagement": {
+                                    "High (Existing+Good)": 3, "High": 3, 
+                                    "Medium (Existing+Poor)": 2, "Medium": 2, 
+                                    "Low (New Account)": 1, "Low": 1
+                                },
+                                "Client Relationship": {
+                                    "Strong": 3, "Neutral": 2, "Weak": 1
+                                },
+                                "Deal Coach": {
+                                    "Active & Available": 3, "Active": 3, 
+                                    "Passive": 2, 
+                                    "Not Available": 1, "None": 1
+                                },
+                                "Bidder Rank": {
+                                    "Top": 3, "Middle": 2, "Bottom": 1
+                                },
+                                "Incumbency Share": {
+                                    "High (>50%)": 3, "High": 3, 
+                                    "Medium (20-50%)": 2, "Medium": 2, 
+                                    "Low (<20%)": 1, "Low": 1, 
+                                    "None": 0
+                                },
+                                "References": {
+                                    "Strong (Domain+Tech)": 3, "Strong": 3, 
+                                    "Average": 2, 
+                                    "Weak/None": 1, "Weak": 1, "None": 1
+                                },
+                                "Solution Strength": {
+                                    "Strong (Covers all)": 3, "Strong": 3, 
+                                    "Average (Gaps)": 2, "Average": 2, 
+                                    "Weak": 1
+                                },
+                                "Client Impression": {
+                                    "Positive": 3, "Neutral": 2, "Negative": 1
+                                },
+                                "Orals Score": {
+                                    "Strong": 3, "At Par": 2, "Weak": 1
+                                },
+                                "Price Alignment": {
+                                    "Aligned": 3, "Deviating": 2, "No Intel": 1
+                                },
+                                "Price Position": {
+                                    "Lowest": 3, "Competitive": 2, "Expensive": 1
+                                }
                             }
 
                             # Apply mappings
@@ -496,6 +531,44 @@ elif page == "🔮 Predictions":
                             result_df = raw_df.copy()
                             result_df["Predicted Deal Status"] = pred_labels
                             
+                            # --- RULE-BASED VALIDATION (Transparency Check) ---
+                            # Calculate the score based on the 5 criteria to show the user "Why"
+                            def calculate_business_score(row):
+                                score = 0
+                                # 1. Relationship (Max 30)
+                                score += {3: 10, 2: 5, 1: 0, 0: 0}.get(row.get("Account Engagement", 0), 0)
+                                score += {3: 10, 2: 5, 1: 0, 0: 0}.get(row.get("Client Relationship", 0), 0)
+                                score += {3: 10, 2: 5, 1: 0, 0: 0}.get(row.get("Deal Coach", 0), 0)
+                                
+                                # 2. Competition (Max 25)
+                                score += {3: 15, 2: 5, 1: 0, 0: 0}.get(row.get("Bidder Rank", 0), 0)
+                                score += {3: 10, 2: 5, 1: 2, 0: 0}.get(row.get("Incumbency Share", 0), 0)
+                                
+                                # 3. Solution (Max 20)
+                                score += {3: 7, 2: 3, 1: 0, 0: 0}.get(row.get("References", 0), 0)
+                                score += {3: 7, 2: 3, 1: 0, 0: 0}.get(row.get("Solution Strength", 0), 0)
+                                score += {3: 6, 2: 3, 1: 0, 0: 0}.get(row.get("Client Impression", 0), 0)
+                                
+                                # 4. Orals (Max 15)
+                                score += {3: 15, 2: 8, 1: 0, 0: 0}.get(row.get("Orals Score", 0), 0)
+                                
+                                # 5. Price (Max 10)
+                                score += {3: 5, 2: 2, 1: 0, 0: 0}.get(row.get("Price Alignment", 0), 0)
+                                score += {3: 5, 2: 3, 1: 0, 0: 0}.get(row.get("Price Position", 0), 0)
+                                
+                                return score
+
+                            # Apply calculation using the mapped X_input values
+                            result_df["Business Logic Score"] = X_input.apply(calculate_business_score, axis=1)
+                            
+                            # Determine status based on strict logic
+                            def get_logic_status(score):
+                                if score >= 60: return "Won"
+                                if score <= 45: return "Lost"
+                                return "Aborted/Risk"
+                                
+                            result_df["Business Logic Status"] = result_df["Business Logic Score"].apply(get_logic_status)
+                            
                             # Add probability columns
                             for idx, class_name in enumerate(le.classes_):
                                 result_df[f"Probability_{class_name}"] = pred_probs[:, idx]
@@ -524,7 +597,7 @@ elif page == "🔮 Predictions":
                             st.markdown("### 📊 Prediction Results")
                             
                             # Filter columns for display
-                            display_cols = ["CRM ID", "Account Name", "Predicted Deal Status"]
+                            display_cols = ["CRM ID", "Account Name", "Predicted Deal Status", "Business Logic Status", "Business Logic Score"]
                             # Add probability columns dynamically based on classes
                             prob_cols = [col for col in result_df.columns if col.startswith("Probability_")]
                             display_cols.extend(prob_cols)
