@@ -99,6 +99,33 @@ categorical_cols = [c for c in X.columns if c not in numeric_cols]
 for c in categorical_cols:
     X[c] = X[c].astype(str).str.strip().replace({"nan": np.nan, "None": np.nan})
 
+# --- BUSINESS LOGIC: Explicit Ordinal Mapping ---
+# Map categorical values to numbers so the model understands "High" > "Low"
+ordinal_mappings = {
+    "Account Engagement": {"High (Existing+Good)": 3, "Medium (Existing+Poor)": 2, "Low (New Account)": 1},
+    "Client Relationship": {"Strong": 3, "Neutral": 2, "Weak": 1},
+    "Deal Coach": {"Active & Available": 3, "Passive": 2, "Not Available": 1},
+    "Bidder Rank": {"Top": 3, "Middle": 2, "Bottom": 1},
+    "Incumbency Share": {"High (>50%)": 3, "Medium (20-50%)": 2, "Low (<20%)": 1, "None": 0},
+    "References": {"Strong (Domain+Tech)": 3, "Average": 2, "Weak/None": 1},
+    "Solution Strength": {"Strong (Covers all)": 3, "Average (Gaps)": 2, "Weak": 1},
+    "Client Impression": {"Positive": 3, "Neutral": 2, "Negative": 1},
+    "Orals Score": {"Strong": 3, "At Par": 2, "Weak": 1},
+    "Price Alignment": {"Aligned": 3, "Deviating": 2, "No Intel": 1},
+    "Price Position": {"Lowest": 3, "Competitive": 2, "Expensive": 1}
+}
+
+# Apply mappings
+for col, mapping in ordinal_mappings.items():
+    if col in X.columns:
+        # Map values, fill unknown with 0 (lowest)
+        X[col] = X[col].map(mapping).fillna(0)
+        # Move from categorical to numeric list
+        if col in categorical_cols:
+            categorical_cols.remove(col)
+        if col not in numeric_cols:
+            numeric_cols.append(col)
+
 # Convert numeric-like columns to numeric
 for c in numeric_cols:
     X[c] = pd.to_numeric(X[c], errors="coerce")
@@ -109,15 +136,15 @@ if numeric_cols:
 if categorical_cols:
     X[categorical_cols] = X[categorical_cols].fillna("UNKNOWN")
 
-# 6. Encoding strategy: OneHot for low-cardinality, Ordinal for high-cardinality
-onehot_feats = [c for c in categorical_cols if X[c].nunique() <= 10]
-ordinal_feats = [c for c in categorical_cols if c not in onehot_feats]
+# 6. Encoding strategy: OneHot for remaining categorical cols
+onehot_feats = [c for c in categorical_cols] # All remaining categoricals
+# No ordinal feats left (we handled them manually)
+ordinal_feats = []
 
 preprocessor = ColumnTransformer(
     transformers=[
         ("num", "passthrough", numeric_cols),
         ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False), onehot_feats),
-        ("ord", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1), ordinal_feats),
     ],
     remainder="drop",
     sparse_threshold=0
