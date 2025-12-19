@@ -67,7 +67,12 @@ except ImportError:
 # Load synthetic data
 # ---------------------------------------------------------------------------
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-data_path = os.path.join(project_root, "data", "output", "synthetic_deals.xlsx")
+# Load Data
+data_path = os.path.join(project_root, "data", "output", "synthetic_data_v3.xlsx")
+if not os.path.exists(data_path):
+    # Fallback to old name if v3 doesn't exist yet
+    data_path = os.path.join(project_root, "data", "output", "synthetic_data_v2.xlsx")
+    
 if not os.path.exists(data_path):
     raise FileNotFoundError(f"Synthetic data not found at {data_path}")
 

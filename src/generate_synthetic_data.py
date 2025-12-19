@@ -101,8 +101,13 @@ def generate_record(index):
     # --- NEW 5 FACTORS (User Defined Logic) ---
     
     # 1. Relationship (Impact: High) - Max Score: 30
-    # a. Account Engagement
-    acc_engagement = random.choice(["High (Existing+Good)", "Medium (Existing+Poor)", "Low (New Account)"])
+    # Enforce logic: NN cannot have High Engagement
+    if type_of_business == "NN":
+        acc_engagement = "Low (New Account)"
+    else: # EE and EN
+        # Account engagement can vary from low to high for existing business types
+        acc_engagement = random.choice(["High (Existing+Good)", "Medium (Existing+Poor)", "Low (New Account)"])
+        
     score_engagement = {"High (Existing+Good)": 10, "Medium (Existing+Poor)": 5, "Low (New Account)": 0}[acc_engagement]
     
     # b. Client Stakeholder Relationship
@@ -121,7 +126,13 @@ def generate_record(index):
     score_rank = {"Top": 15, "Middle": 5, "Bottom": 0}[bidder_rank]
     
     # b. Incumbency Share
-    incumbency = random.choice(["High (>50%)", "Medium (20-50%)", "Low (<20%)", "None"])
+    # Enforce logic: NN cannot have Incumbency. EE/EN MUST have Incumbency.
+    if type_of_business == "NN":
+        incumbency = "None" 
+    else: # EE and EN
+        # Incumbency will be present (High, Medium, or Low) - NEVER None
+        incumbency = random.choice(["High (>50%)", "Medium (20-50%)", "Low (<20%)"])
+
     score_incumbency = {"High (>50%)": 10, "Medium (20-50%)": 5, "Low (<20%)": 2, "None": 0}[incumbency]
     
     score_competition = score_rank + score_incumbency
@@ -242,9 +253,11 @@ for i in range(1, 1001):
 # STEP 5: Convert to DataFrame
 synthetic_df = pd.DataFrame(synthetic_records)
 
-# STEP 6: Save synthetic data
-output_file = "data/output/Synthetic_Data.xlsx"
-os.makedirs(os.path.dirname(output_file), exist_ok=True)
+# STEP 6: Save to Excel
+project_root = os.getcwd()
+output_dir = os.path.join(project_root, "data", "output")
+os.makedirs(output_dir, exist_ok=True)
+output_file = os.path.join(output_dir, "synthetic_data_v3.xlsx")
 
 try:
     synthetic_df.to_excel(output_file, index=False)
@@ -255,17 +268,9 @@ except PermissionError:
     # File is locked (probably open in Excel), save with timestamp
     from datetime import datetime
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_file = f"data/output/Synthetic_Data_{timestamp}.xlsx"
+    backup_file = f"data/output/synthetic_data_v2_{timestamp}.xlsx"
     synthetic_df.to_excel(backup_file, index=False)
     print(f"\n[WARNING] Could not save to {output_file} (file is open)")
     print(f"[SUCCESS] Saved to backup file: {backup_file}")
     print(f"Generated {len(synthetic_df)} records")
-    
-# Also save as synthetic_deals.xlsx for Streamlit compatibility
-try:
-    synthetic_deals_file = "data/output/synthetic_deals.xlsx"
-    synthetic_df.to_excel(synthetic_deals_file, index=False)
-    print(f"[SUCCESS] Also saved to: {synthetic_deals_file}")
-except PermissionError:
-    print(f"[WARNING] Could not save to {synthetic_deals_file} (file is open)")
 

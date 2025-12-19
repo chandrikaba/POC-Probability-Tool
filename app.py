@@ -81,7 +81,7 @@ st.markdown("""
 # Project paths
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "xgb_classifier.pkl")
-SYNTHETIC_DATA_PATH = os.path.join(PROJECT_ROOT, "data", "output", "synthetic_deals.xlsx")
+SYNTHETIC_DATA_PATH = os.path.join(PROJECT_ROOT, "data", "output", "synthetic_data_v3.xlsx")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data", "output")
 
 # Initialize session state
@@ -100,9 +100,18 @@ with st.sidebar:
     st.image("https://via.placeholder.com/300x100/1f77b4/ffffff?text=Deal+Win+AI", use_container_width=True)
     st.markdown("### 🎯 Navigation")
     
+    # Developer Mode Toggle
+    show_dev = st.checkbox("Show Developer Options", value=False)
+    
+    # Navigation Options
+    nav_options = ["🏠 Home", "🔮 Predictions", "📈 Audit Trail", "ℹ️ About"]
+    if show_dev:
+        nav_options.insert(1, "📁 Data Generation")
+        nav_options.insert(2, "🤖 Model Training")
+    
     page = st.radio(
         "Select a page:",
-        ["🏠 Home", "📁 Data Generation", "🤖 Model Training", "🔮 Predictions", "📈 Audit Trail", "ℹ️ About"],
+        nav_options,
         label_visibility="collapsed"
     )
     
@@ -371,7 +380,7 @@ elif page == "🔮 Predictions":
         st.markdown("""
         <div class="info-box">
         Upload an Excel file with deal data to get instant predictions.
-        The file should have the same structure as the training data (first row will be skipped).
+        The file should have the same structure as the training data.
         </div>
         """, unsafe_allow_html=True)
         
@@ -384,7 +393,7 @@ elif page == "🔮 Predictions":
         if uploaded_file is not None:
             try:
                 # Read the uploaded file
-                raw_df = pd.read_excel(uploaded_file, skiprows=1)
+                raw_df = pd.read_excel(uploaded_file)
                 
                 st.markdown("### 📊 Input Data Preview")
                 st.dataframe(raw_df.head(10), use_container_width=True)
@@ -427,6 +436,27 @@ elif page == "🔮 Predictions":
                             # Preprocessing - same as training
                             X_input = raw_df.drop(columns=[c for c in drop_cols if c in raw_df.columns], errors="ignore").copy()
                             
+                            # --- SMART COLUMN MAPPING ---
+                            # Map common variations of column names to the required standard names
+                            col_map = {
+                                "Engagement": "Account Engagement", "Acc Engagement": "Account Engagement",
+                                "Relationship": "Client Relationship", "Client Rel": "Client Relationship",
+                                "Coach": "Deal Coach", "Deal Coach Availability": "Deal Coach",
+                                "Rank": "Bidder Rank", "Ranking": "Bidder Rank",
+                                "Incumbency": "Incumbency Share", "Incumbent": "Incumbency Share",
+                                "Refs": "References", "Case Studies": "References",
+                                "Solution": "Solution Strength", "Sol Strength": "Solution Strength",
+                                "Impression": "Client Impression", "Client Imp": "Client Impression",
+                                "Orals": "Orals Score", "Presentation": "Orals Score",
+                                "Price Align": "Price Alignment", "Win Price": "Price Alignment",
+                                "Price Pos": "Price Position", "Position": "Price Position"
+                            }
+                            X_input = X_input.rename(columns=col_map)
+                            
+                            # Now identify numeric vs categorical based on actual dtypes
+                            numeric_cols = X_input.select_dtypes(include=['int64', 'float64']).columns.tolist()
+                            categorical_cols = X_input.select_dtypes(include=['object']).columns.tolist()
+
                             # Convert columns to match expected types from training
                             for col in X_input.columns:
                                 if col in expected_types:
@@ -437,16 +467,6 @@ elif page == "🔮 Predictions":
                                         # This should be categorical
                                         X_input[col] = X_input[col].astype(str)
                             
-                            # Now identify numeric vs categorical based on actual dtypes
-                            numeric_cols = X_input.select_dtypes(include=['int64', 'float64']).columns.tolist()
-                            categorical_cols = X_input.select_dtypes(include=['object']).columns.tolist()
-                            
-                            # Clean categorical columns
-                            for col in categorical_cols:
-                                X_input[col] = X_input[col].str.strip()
-                                X_input[col] = X_input[col].replace({'nan': np.nan, 'None': np.nan, '': np.nan, 'NaN': np.nan})
-                                
-                            # --- BUSINESS LOGIC: Explicit Ordinal Mapping (Must match training) ---
                             # --- BUSINESS LOGIC: Explicit Ordinal Mapping (Must match training) ---
                             # Expanded to accept both full strings and simple keywords for flexibility
                             ordinal_mappings = {
@@ -496,17 +516,33 @@ elif page == "🔮 Predictions":
                                 }
                             }
 
-                            # Apply mappings
+                            # Apply mappings (Case Insensitive)
                             for col, mapping in ordinal_mappings.items():
                                 if col in X_input.columns:
-                                    # Map values, fill unknown with 0 (lowest)
-                                    X_input[col] = X_input[col].map(mapping).fillna(0)
+                                    # Create a lower-case mapping for flexibility
+                                    lower_mapping = {k.lower(): v for k, v in mapping.items()}
+                                    
+                                    def map_value(val):
+                                        if pd.isna(val) or val == "nan" or val == "UNKNOWN": return 0
+                                        val_str = str(val).strip()
+                                        # Try exact match
+                                        if val_str in mapping: return mapping[val_str]
+                                        # Try lower case match
+                                        if val_str.lower() in lower_mapping: return lower_mapping[val_str.lower()]
+                                        # Default to 0
+                                        return 0
+
+                                    X_input[col] = X_input[col].apply(map_value)
+                                    
+                                    # SAFETY NET: Force conversion to numeric
+                                    X_input[col] = pd.to_numeric(X_input[col], errors='coerce').fillna(0)
+                                    
                                     # Move from categorical to numeric list
                                     if col in categorical_cols:
                                         categorical_cols.remove(col)
                                     if col not in numeric_cols:
                                         numeric_cols.append(col)
-                                        
+
                             # Fill remaining categorical with UNKNOWN
                             for col in categorical_cols:
                                 X_input[col] = X_input[col].fillna("UNKNOWN")
@@ -521,6 +557,8 @@ elif page == "🔮 Predictions":
 
                             
                             # Predict using pipeline
+                            # Ensure all column names are strings to avoid XGBoost error
+                            X_input.columns = X_input.columns.astype(str)
                             pred_numeric = model.predict(X_input)
                             pred_labels = le.inverse_transform(pred_numeric)
                             
