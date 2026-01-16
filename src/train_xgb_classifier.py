@@ -43,7 +43,7 @@ import numpy as np
 import joblib
 import xgboost as xgb
 from xgboost import XGBClassifier
-from sklearn.model_selection import train_test_split, RandomizedSearchCV
+from sklearn.model_selection import train_test_split, RandomizedSearchCV, StratifiedKFold, cross_val_score
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, OrdinalEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
@@ -68,10 +68,18 @@ except ImportError:
 # ---------------------------------------------------------------------------
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 # Load Data
-data_path = os.path.join(project_root, "data", "output", "synthetic_data_v3.xlsx")
-if not os.path.exists(data_path):
-    # Fallback to old name if v3 doesn't exist yet
-    data_path = os.path.join(project_root, "data", "output", "synthetic_data_v2.xlsx")
+# Load Data
+output_dir = os.path.join(project_root, "data", "output")
+# Find all synthetic_data files
+files = [f for f in os.listdir(output_dir) if f.startswith("synthetic_data") and f.endswith(".xlsx") and not f.startswith("~$")] # Ignore temp lock files
+# Sort by modification time (latest first)
+files.sort(key=lambda x: os.path.getmtime(os.path.join(output_dir, x)), reverse=True)
+
+if not files:
+    raise FileNotFoundError("No synthetic data found")
+    
+data_path = os.path.join(output_dir, files[0])
+print(f"Loading latest data from: {data_path}")
     
 if not os.path.exists(data_path):
     raise FileNotFoundError(f"Synthetic data not found at {data_path}")
@@ -93,7 +101,12 @@ le = LabelEncoder()
 y = le.fit_transform(target)
 
 # Drop identifier and long-text columns from features
-drop_cols = ["CRM ID", "Opportunity Name", "Account Name", "Detailed Remarks"]
+# Drop identifier and long-text columns from features
+drop_cols = [
+    "CRM ID", "Opportunity Name", "Account Name", "Detailed Remarks", 
+    "Calculated Score", # Outcome variable (leakage)
+    "Primary L1", "Primary L2", "Secondary L1", "Secondary L2", "Tertiary L1", "Tertiary L2" # Explanatory variables (leakage or unavailable at input)
+]
 X = df.drop(columns=[c for c in drop_cols if c in df.columns] + ["Deal Status"], errors="ignore").copy()
 
 # 5. Basic preprocessing: detect numeric vs categorical
@@ -156,6 +169,7 @@ preprocessor = ColumnTransformer(
 )
 
 # 7. Train/test split (stratify to keep class balance)
+#X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
 
 # 8. XGBoost classifier pipeline
@@ -173,16 +187,43 @@ xgb_clf = xgb.XGBClassifier(
     eval_metric=eval_metric, 
     n_jobs=-1, 
     random_state=42,
-    n_estimators=1000  # Increased from 500
+    n_estimators=1000,
+    early_stopping_rounds=50
 )
+
+
 
 pipeline = Pipeline([
     ("prep", preprocessor),
     ("model", xgb_clf)
 ])
 
+
+
 # 9. Baseline fit/Train Model
-pipeline.fit(X_train, y_train)
+#pipeline.fit(X_train, y_train)
+
+
+pipeline.named_steps["model"].fit(
+    preprocessor.fit_transform(X_train), y_train,
+    eval_set=[(preprocessor.transform(X_test), y_test)],
+    verbose=True
+)
+
+# for train_idx, val_idx in cv.split(X, y):
+#     X_tr, X_val = X.iloc[train_idx], X.iloc[val_idx]
+#     y_tr, y_val = y[train_idx], y[val_idx]
+#     
+#     pipeline.named_steps["model"].fit(
+#         preprocessor.fit_transform(X_tr), y_tr,
+#         eval_set=[(preprocessor.transform(X_val), y_val)],
+#         early_stopping_rounds=50,
+#         verbose=False
+#     )
+#     preds = pipeline.predict(X_val)
+#     print("Fold F1:", f1_score(y_val, preds, average="weighted"))
+
+
 preds = pipeline.predict(X_test)
 probs = pipeline.predict_proba(X_test)
 
@@ -194,10 +235,22 @@ logger.info(f"F1-score : {f1_score(y_test, preds, average='weighted', zero_divis
 logger.info(f"\nConfusion Matrix:\n{confusion_matrix(y_test, preds)}")
 logger.info(f"\nClassification Report:\n{classification_report(y_test, preds, target_names=le.classes_, zero_division=0)}")
 
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+# Disable early stopping for CV as we don't pass eval_set
+pipeline.named_steps["model"].set_params(early_stopping_rounds=None)
+
+scores = cross_val_score(pipeline, X, y, cv=cv, scoring="f1_weighted")
+
+print("Cross-validation F1 scores:", scores)
+print("Mean F1:", scores.mean())
 
 # 10. Optional tuning (can be slow). Set do_tuning=True to run.
 do_tuning = True
 if do_tuning:
+    # Disable early stopping for randomized search (requires eval_set)
+    pipeline.named_steps["model"].set_params(early_stopping_rounds=None)
+
     param_dist = {
         "model__n_estimators": [500, 1000, 1500],  # Increased range
         "model__max_depth": [3, 5, 7, 9],

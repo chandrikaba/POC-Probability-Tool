@@ -82,8 +82,14 @@ l1_to_l2 = {
     ]
 }
 
+# Helper for weighted selection
+def pick_weighted(options, weights):
+    # options: list of values
+    # weights: list of probabilities (should sum to 1.0 or approx)
+    return random.choices(options, weights=weights, k=1)[0]
+
 # Synthetic record generator
-def generate_record(index):
+def generate_record(index, target_status=None):
     # --- EXISTING FIELDS ---
     sbu = random.choice(["Europe", "IMEA", "APJ", "ASV"])
     account_name = random.choice(["HSBC", "MOHRE", "Cummins", "Cadent", "GSK", "Etihad"])
@@ -91,108 +97,224 @@ def generate_record(index):
     tcv = round(random.uniform(5, 100), 2)
     deal_size_bucket = "<250M" if tcv < 250 else ">=250M"
     
-    primary_l1 = random.choice(list(l1_to_l2.keys()))
-    secondary_l1 = random.choice(list(l1_to_l2.keys()))
-    tertiary_l1 = random.choice(list(l1_to_l2.keys()))
-    primary_l2 = random.choice(l1_to_l2[primary_l1])
-    secondary_l2 = random.choice(l1_to_l2[secondary_l1])
-    tertiary_l2 = random.choice(l1_to_l2[tertiary_l1])
+    # Initialize variables
+    primary_l1, primary_l2, secondary_l1, secondary_l2, tertiary_l1, tertiary_l2 = "", "", "", "", "", ""
 
-    # --- NEW 5 FACTORS (User Defined Logic) ---
+    # --- DEFINE WEIGHTS BASED ON TARGET STATUS ---
+    # Probabilities for [Best_Option, Mid_Option, Worst_Option]
+    if target_status == "Won":
+        w = [0.90, 0.10, 0.0] # Almost exclusively Top/High
+    elif target_status == "Lost":
+        w = [0.0, 0.10, 0.90] # Almost exclusively Low/Weak
+    elif target_status == "Aborted":
+        w = [0.10, 0.80, 0.10]   # Skewed to Average/Mid
+    else:
+        w = [0.33, 0.33, 0.33] # Random
+
+    # ---------------------------------------------------------
+    # 1. Enforce Business Logic Consistency
+    # ---------------------------------------------------------
     
-    # 1. Relationship (Impact: High) - Max Score: 30
-    # Enforce logic: NN cannot have High Engagement
+    # Logic: NN (Net New) vs Existing (EE/EN)
+    # If we WANT to WIN, it helps if we are NOT NN (Net New), or if we are NN, we need strong factors.
+    # To ensure "Won" scores are high enough, we'll bias the Type of Business for Won deals.
+    if target_status == "Won":
+        # Bias towards Existing business for Wins to allow higher incumbency scores
+        type_of_business = random.choice(["EE", "EN", "EE", "EN", "NN"]) 
+    else:
+        # Random for others
+        type_of_business = random.choice(["EE", "EN", "NN"])
+
     if type_of_business == "NN":
+        # New Client: No Incumbency, Low Engagement
+        incumbency = "None"
         acc_engagement = "Low (New Account)"
-    else: # EE and EN
-        # Account engagement can vary from low to high for existing business types
-        acc_engagement = random.choice(["High (Existing+Good)", "Medium (Existing+Poor)", "Low (New Account)"])
+    else: 
+        # Existing Client: must have some history
+        # Determine Incumbency first
+        # Incumbency Options: ["High (>50%)", "Medium (20-50%)", "Low (<20%)"]
+        incumbency = pick_weighted(["High (>50%)", "Medium (20-50%)", "Low (<20%)"], w)
         
-    score_engagement = {"High (Existing+Good)": 10, "Medium (Existing+Poor)": 5, "Low (New Account)": 0}[acc_engagement]
+        # Determine Engagement based on Incumbency
+        # Engagement Options: ["High (Existing+Good)", "Medium (Existing+Poor)", "Low (New Account)"] (mapped to Best/Mid/Worst)
+        if incumbency == "High (>50%)":
+            acc_engagement = pick_weighted(["High (Existing+Good)", "Medium (Existing+Poor)"], [w[0], w[1]+w[2]])
+        elif incumbency == "Medium (20-50%)":
+            acc_engagement = pick_weighted(["High (Existing+Good)", "Medium (Existing+Poor)"], [w[0], w[1]+w[2]])
+        else: # Low (<20%)
+            acc_engagement = pick_weighted(["High (Existing+Good)", "Medium (Existing+Poor)"], [w[0], w[1]+w[2]])
+
+    # ---------------------------------------------------------
+    # 2. Calculate Feature Scores
+    # ---------------------------------------------------------
     
-    # b. Client Stakeholder Relationship
-    client_rel = random.choice(["Strong", "Neutral", "Weak"])
-    score_rel = {"Strong": 10, "Neutral": 5, "Weak": 0}[client_rel]
+    # Track individual contributions for Factor determination
+    contributions = []
+
+    # A. Relationship
+    score_engagement_map = {"High (Existing+Good)": 10, "Medium (Existing+Poor)": 5, "Low (New Account)": 0}
+    score_engagement = score_engagement_map[acc_engagement]
+    contributions.append((score_engagement, 10, "Account Engagement", acc_engagement, "Relationship", "Client Relationship (CXOs, decision makers, influencers)"))
+
+    # Options: ["Strong", "Neutral", "Weak"]
+    if acc_engagement == "High (Existing+Good)":
+        # Rule: High Engagement implies at least Neutral or Strong relationship (No "Weak")
+        if target_status == "Lost":
+             # If target is Lost, we'd normally want Weak, but business logic prevents it here.
+             # We rely on other factors (Price/Solution) to drive the Loss.
+             # Skew to Neutral to be "worse" than Strong.
+             rel_weights = [0.2, 0.8] 
+        elif target_status == "Won":
+             rel_weights = [0.9, 0.1]
+        else:
+             rel_weights = [0.5, 0.5]
+        
+        client_rel = pick_weighted(["Strong", "Neutral"], rel_weights)
+    else:
+        # Standard weighted logic based on status
+        client_rel = pick_weighted(["Strong", "Neutral", "Weak"], w)
+
+    score_rel_map = {"Strong": 10, "Neutral": 5, "Weak": 0}
+    score_rel = score_rel_map[client_rel]
+    contributions.append((score_rel, 10, "Client Relationship", client_rel, "Relationship", "Client Relationship (CXOs, decision makers, influencers)"))
     
-    # c. Deal Coach Availability
-    deal_coach = random.choice(["Active & Available", "Passive", "Not Available"])
-    score_coach = {"Active & Available": 10, "Passive": 5, "Not Available": 0}[deal_coach]
+    # Options: ["Active & Available", "Passive", "Not Available"]
+    deal_coach = pick_weighted(["Active & Available", "Passive", "Not Available"], w)
+    score_coach_map = {"Active & Available": 10, "Passive": 5, "Not Available": 0}
+    score_coach = score_coach_map[deal_coach]
+    contributions.append((score_coach, 10, "Deal Coach", deal_coach, "Relationship", "Deal Coach availability/ fit"))
     
     score_relationship = score_engagement + score_rel + score_coach
 
-    # 2. Competition & Incumbency (Impact: High) - Max Score: 25
-    # a. Bidder Ranking
-    bidder_rank = random.choice(["Top", "Middle", "Bottom"])
-    score_rank = {"Top": 15, "Middle": 5, "Bottom": 0}[bidder_rank]
+    # B. Competition
+    # Options: ["Top", "Middle", "Bottom"]
+    bidder_rank = pick_weighted(["Top", "Middle", "Bottom"], w)
+    score_rank_map = {"Top": 15, "Middle": 5, "Bottom": 0}
+    score_rank = score_rank_map[bidder_rank]
+    contributions.append((score_rank, 15, "Bidder Rank", bidder_rank, "Relationship", "Competition and Incumbency (strategic, CSAT, delivery track record)"))
     
-    # b. Incumbency Share
-    # Enforce logic: NN cannot have Incumbency. EE/EN MUST have Incumbency.
-    if type_of_business == "NN":
-        incumbency = "None" 
-    else: # EE and EN
-        # Incumbency will be present (High, Medium, or Low) - NEVER None
-        incumbency = random.choice(["High (>50%)", "Medium (20-50%)", "Low (<20%)"])
-
-    score_incumbency = {"High (>50%)": 10, "Medium (20-50%)": 5, "Low (<20%)": 2, "None": 0}[incumbency]
+    score_inc_map = {"High (>50%)": 10, "Medium (20-50%)": 5, "Low (<20%)": 2, "None": 0}
+    score_incumbency = score_inc_map[incumbency]
+    contributions.append((score_incumbency, 10, "Incumbency Share", incumbency, "Commercials", "Incumbency advantage/discounting"))
     
     score_competition = score_rank + score_incumbency
 
-    # 3. Solution Capability (Impact: Medium-High) - Max Score: 20
-    # a. References/Case Studies
-    references = random.choice(["Strong (Domain+Tech)", "Average", "Weak/None"])
-    score_refs = {"Strong (Domain+Tech)": 7, "Average": 3, "Weak/None": 0}[references]
+    # C. Solution
+    # Options: ["Strong (Domain+Tech)", "Average", "Weak/None"]
+    references = pick_weighted(["Strong (Domain+Tech)", "Average", "Weak/None"], w)
+    score_refs_map = {"Strong (Domain+Tech)": 7, "Average": 3, "Weak/None": 0}
+    score_refs = score_refs_map[references]
+    contributions.append((score_refs, 7, "References", references, "Capability_or_Credentials", "References (Scale, Domain, Usecase) & Case Studies"))
     
-    # b. Solution Strength
-    sol_strength = random.choice(["Strong (Covers all)", "Average (Gaps)", "Weak"])
-    score_sol = {"Strong (Covers all)": 7, "Average (Gaps)": 3, "Weak": 0}[sol_strength]
+    # Options: ["Strong (Covers all)", "Average (Gaps)", "Weak"]
+    sol_strength = pick_weighted(["Strong (Covers all)", "Average (Gaps)", "Weak"], w)
+    score_sol_map = {"Strong (Covers all)": 7, "Average (Gaps)": 3, "Weak": 0}
+    score_sol = score_sol_map[sol_strength]
+    contributions.append((score_sol, 7, "Solution Strength", sol_strength, "Solution", "Technical Response Quality (coherent, competitive, consultative, competitive)"))
     
-    # c. Client Impression
-    client_impression = random.choice(["Positive", "Neutral", "Negative"])
-    score_imp = {"Positive": 6, "Neutral": 3, "Negative": 0}[client_impression]
+    # Options: ["Positive", "Neutral", "Negative"]
+    client_impression = pick_weighted(["Positive", "Neutral", "Negative"], w)
+    score_imp_map = {"Positive": 6, "Neutral": 3, "Negative": 0}
+    score_imp = score_imp_map[client_impression]
+    contributions.append((score_imp, 6, "Client Impression", client_impression, "Solution", "PoV/ Thought Leadership"))
     
     score_solution = score_refs + score_sol + score_imp
 
-    # 4. Orals/Presentation (Impact: Medium-High) - Max Score: 15
-    orals_score_val = random.choice(["Strong", "At Par", "Weak"])
-    score_orals = {"Strong": 15, "At Par": 8, "Weak": 0}[orals_score_val]
+    # D. Orals
+    # Options: ["Strong", "At Par", "Weak"]
+    orals_score_val = pick_weighted(["Strong", "At Par", "Weak"], w)
+    score_orals_map = {"Strong": 15, "At Par": 8, "Weak": 0}
+    score_orals = score_orals_map[orals_score_val]
+    contributions.append((score_orals, 15, "Orals Score", orals_score_val, "Solution", "Orals Performance"))
 
-    # 5. Price (Impact: Medium) - Max Score: 10
-    # a. Price to Win Alignment
-    price_alignment = random.choice(["Aligned", "Deviating", "No Intel"])
-    score_align = {"Aligned": 5, "Deviating": 2, "No Intel": 0}[price_alignment]
+    # E. Price
+    # Options: ["Aligned", "Deviating", "No Intel"] -> Note: "No Intel" is worst (0)
+    price_alignment = pick_weighted(["Aligned", "Deviating", "No Intel"], w)
+    score_align_map = {"Aligned": 5, "Deviating": 2, "No Intel": 0}
+    score_align = score_align_map[price_alignment]
+    contributions.append((score_align, 5, "Price Alignment", price_alignment, "Commercials", "Deviation/fit to win price"))
     
-    # b. Competitive Position
-    price_position = random.choice(["Lowest", "Competitive", "Expensive"])
-    score_pos = {"Lowest": 5, "Competitive": 3, "Expensive": 0}[price_position]
+    # Options: ["Lowest", "Competitive", "Expensive"]
+    price_position = pick_weighted(["Lowest", "Competitive", "Expensive"], w)
+    score_pos_map = {"Lowest": 5, "Competitive": 3, "Expensive": 0}
+    score_pos = score_pos_map[price_position]
+    contributions.append((score_pos, 5, "Price Position", price_position, "Commercials", "Pricing model innovation/ Commercial Structure"))
     
     score_price = score_align + score_pos
 
     # --- TOTAL SCORE & STATUS ---
     total_score = score_relationship + score_competition + score_solution + score_orals + score_price
-    
-    # Reduced random noise (+/- 2) for higher predictability
     total_score += random.randint(-2, 2)
-
-    # Tighter thresholds for higher accuracy (>85%)
-    if total_score >= 60:
-        deal_status = "Won"
-    elif total_score <= 45:
-        deal_status = "Lost"
-    else:
-        # Middle range (46-59) is now predominantly Aborted
-        # This gives the model a clear pattern to learn for the 3rd class
-        if random.random() < 0.85: # 85% chance of Aborted in this range
-            deal_status = "Aborted"
+    
+    # Force alignment with Target Status
+    # This prevents random "bad luck" features from dragging a "Won" deal into "Aborted/Lost" territory
+    if target_status == "Won" and total_score < 60:
+        total_score = random.randint(62, 85)
+    elif target_status == "Lost" and total_score > 45:
+        total_score = random.randint(20, 43)
+    elif target_status == "Aborted":
+        if total_score < 46 or total_score > 59:
+             total_score = random.randint(48, 58)
+    
+    deal_status = target_status
+    
+    # ---------------------------------------------------------
+    # 3. Determine Contributing Factors (Real World Logic)
+    # ---------------------------------------------------------
+    # Calculate 'Impact' for each factor.
+    # Impact = (Score / MaxScore) - 0.5.
+    factor_impacts = []
+    for score, max_score, name, val, l1, l2 in contributions:
+        normalized = score / max_score if max_score > 0 else 0
+        if normalized >= 0.7:
+            sentiment = "(Positive)"
+            magnitude = normalized
+        elif normalized <= 0.3:
+            sentiment = "(Negative)"
+            magnitude = (1.0 - normalized)
         else:
-            deal_status = "Lost"
+            sentiment = "(Neutral)"
+            magnitude = 0.5
+            
+        factor_impacts.append({
+            "name": name,
+            "value": val,
+            "l1": l1,
+            "l2": l2,
+            "sentiment": sentiment,
+            "magnitude": magnitude
+        })
+
+    factor_impacts.sort(key=lambda x: x["magnitude"], reverse=True)
+    
+    final_factors = []
+    
+    if deal_status == "Won":
+        candidates = [f for f in factor_impacts if "Positive" in f["sentiment"]]
+        candidates += [f for f in factor_impacts if "Positive" not in f["sentiment"]]
+    elif deal_status in ["Lost", "Aborted"]:
+        candidates = [f for f in factor_impacts if "Negative" in f["sentiment"]]
+        candidates += [f for f in factor_impacts if "Negative" not in f["sentiment"]]
+    else:
+        candidates = factor_impacts
+
+    selected = candidates[:3]
+    
+    if len(selected) > 0:
+        primary_l1 = selected[0]["l1"]
+        primary_l2 = f"{selected[0]['l2']} - {selected[0]['value']} {selected[0]['sentiment']}"
+    if len(selected) > 1:
+        secondary_l1 = selected[1]["l1"]
+        secondary_l2 = f"{selected[1]['l2']} - {selected[1]['value']} {selected[1]['sentiment']}"
+    if len(selected) > 2:
+        tertiary_l1 = selected[2]["l1"]
+        tertiary_l2 = f"{selected[2]['l2']} - {selected[2]['value']} {selected[2]['sentiment']}"
 
     # Generate remarks
     if deal_status == "Won":
-        remarks = f"Won due to {client_rel} relationship and {bidder_rank} ranking. Total Score: {total_score}"
-    elif deal_status == "Lost":
-        remarks = f"Lost due to {orals_score_val} orals and {price_position} pricing. Total Score: {total_score}"
+        remarks = f"Won. Key drivers: {primary_l2}, {secondary_l2}. Total Score: {total_score}"
     else:
-        remarks = f"Aborted. Weak engagement ({acc_engagement}) or mid-range score. Total Score: {total_score}"
+        remarks = f"{deal_status}. Main issues: {primary_l2}, {secondary_l2}. Total Score: {total_score}"
 
     return {
         "CRM ID": f"CRM{300000 + index}",
@@ -217,7 +339,7 @@ def generate_record(index):
         "Orals Score": orals_score_val,
         "Price Alignment": price_alignment,
         "Price Position": price_position,
-        "Calculated Score": total_score, # Helpful for debugging/analysis
+        "Calculated Score": total_score,
 
         "Primary L1": primary_l1,
         "Primary L2": primary_l2,
@@ -244,8 +366,11 @@ def generate_record(index):
 # STEP 4: Generate 1000 synthetic records using the generate_record function
 print("Generating 1000 synthetic records...")
 synthetic_records = []
+target_distribution = ["Won", "Lost", "Aborted"]
 for i in range(1, 1001):
-    record = generate_record(i)
+    # Cycle through targets to ensure roughly equal distribution
+    target = target_distribution[i % 3]
+    record = generate_record(i, target_status=target)
     synthetic_records.append(record)
     if i % 50 == 0:
         print(f"Generated {i}/1000 records...")
