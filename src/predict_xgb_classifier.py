@@ -138,25 +138,35 @@ try:
     # DEBUG: Check against model expectations
     try:
         preprocessor = model.named_steps['prep']
-        # Find the 'num' transformer
-        num_trans = [t for t in preprocessor.transformers_ if t[0] == 'num'][0]
-        model_num_cols = num_trans[2] # The list of columns
         
-        print("\n--- DEBUG: Checking Model Numeric Columns ---")
-        for col in model_num_cols:
-            if col not in X_input.columns:
-                print(f"MISSING: {col}")
-            else:
-                dtype = X_input[col].dtype
-                if dtype == 'object':
-                    print(f"MISMATCH: Column '{col}' is Object (String) but Model expects Numeric.")
-                    print(f"   Sample values: {X_input[col].unique()[:5]}")
-                else:
-                    # Check for NaNs in numeric columns
-                    if X_input[col].isna().any():
-                         print(f"WARN: Column '{col}' has NaNs: {X_input[col].isna().sum()}")
+        # 1. Check Numeric Columns
+        num_trans = [t for t in preprocessor.transformers_ if t[0] == 'num'][0]
+        model_num_cols = num_trans[2]
+        
+        # 2. Check One-Hot Categorical Columns
+        cat_trans = [t for t in preprocessor.transformers_ if t[0] == 'onehot'][0]
+        model_cat_cols = cat_trans[2]
+        
+        all_model_cols = list(model_num_cols) + list(model_cat_cols)
+        
+        print("\n--- DEBUG: Checking Input Data Quality ---")
+        missing_cols = [c for c in all_model_cols if c not in X_input.columns]
+        if missing_cols:
+            print(f"❌ CRITICAL ERROR: The following columns are MISSING from the input file:\n   {missing_cols}")
+            print("   (These will be treated as 0 or UNKNOWN, heavily penalizing the score!)")
+        
+        # Check specific values
+        print("\n--- Checking Key Feature Values ---")
+        for col in all_model_cols:
+            if col in X_input.columns:
+                val = X_input[col].iloc[0]
+                if pd.isna(val) or val == "pd.nan" or val == "nan" or str(val).strip() == "":
+                    print(f"⚠️  WARNING: Column '{col}' is EMPTY/NaN. (Will be treated as lowest score)")
+                elif str(val) == "UNKNOWN":
+                     print(f"⚠️  WARNING: Column '{col}' is marked UNKNOWN.")
     except Exception as e:
         print(f"Debug check failed: {e}")
+        traceback.print_exc()
 
     # Clean remaining categorical columns
     for col in categorical_cols:

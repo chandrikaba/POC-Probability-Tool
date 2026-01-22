@@ -145,116 +145,136 @@ def generate_record(index, target_status=None):
             acc_engagement = pick_weighted(["High (Existing+Good)", "Medium (Existing+Poor)"], [w[0], w[1]+w[2]])
 
     # ---------------------------------------------------------
-    # 2. Calculate Feature Scores
+    # 2. Calculate Feature Scores (With "Missing Data" Simulation)
     # ---------------------------------------------------------
     
-    # Track individual contributions for Factor determination
+    # Simulation: Late-stage data (Price, Orals, certain Solution aspects) 
+    # might not be available for all deals (especially early stage).
+    # We randomly "hide" this info (convert to None/Not Available) to ensure
+    # the model learns that missing data doesn't auto-mean "Lost".
+    
+    is_early_stage = random.choice([True, False]) # 50% chance of being incomplete
+    
+    # Track scores
+    current_score = 0
+    max_possible_score = 0
     contributions = []
 
-    # A. Relationship
+    # Helper to add score only if available
+    def add_score(val, max_points, name, l1, l2):
+        nonlocal current_score, max_possible_score
+        # Check if value indicates "missing" or "not applicable"
+        if val in ["Not Available", "No Intel", "Unknown", None]:
+            return # Do not punish scalar score, do not add to max possible
+        
+        # Calculate scalar score based on maps (re-defined locally for clarity)
+        # We need the numeric score here. 
+        # For simplicity, we define the maps inside.
+        score = 0
+        if name == "Account Engagement":
+            score = {"High (Existing+Good)": 10, "Medium (Existing+Poor)": 5, "Low (New Account)": 0}.get(val, 0)
+        elif name == "Client Relationship":
+            score = {"Strong": 10, "Neutral": 5, "Weak": 0}.get(val, 0)
+        elif name == "Deal Coach":
+            score = {"Active & Available": 10, "Passive": 5, "Not Available": 0}.get(val, 0)
+        elif name == "Bidder Rank":
+            score = {"Top": 15, "Middle": 5, "Bottom": 0}.get(val, 0)
+        elif name == "Incumbency Share":
+            score = {"High (>50%)": 10, "Medium (20-50%)": 5, "Low (<20%)": 2, "None": 0}.get(val, 0)
+        elif name == "References":
+            score = {"Strong (Domain+Tech)": 7, "Average": 3, "Weak/None": 0}.get(val, 0)
+        elif name == "Solution Strength":
+            score = {"Strong (Covers all)": 7, "Average (Gaps)": 3, "Weak": 0}.get(val, 0)
+        elif name == "Client Impression":
+            score = {"Positive": 6, "Neutral": 3, "Negative": 0}.get(val, 0)
+        elif name == "Orals Score":
+            score = {"Strong": 15, "At Par": 8, "Weak": 0}.get(val, 0)
+        elif name == "Price Alignment":
+            score = {"Aligned": 5, "Deviating": 2, "No Intel": 0}.get(val, 0)
+        elif name == "Price Position":
+            score = {"Lowest": 5, "Competitive": 3, "Expensive": 0}.get(val, 0)
+            
+        current_score += score
+        max_possible_score += max_points
+        contributions.append((score, max_points, name, val, l1, l2))
+
+    # A. Relationship (Always Available)
     score_engagement_map = {"High (Existing+Good)": 10, "Medium (Existing+Poor)": 5, "Low (New Account)": 0}
-    score_engagement = score_engagement_map[acc_engagement]
-    contributions.append((score_engagement, 10, "Account Engagement", acc_engagement, "Relationship", "Client Relationship (CXOs, decision makers, influencers)"))
+    # acc_engagement generated above
+    add_score(acc_engagement, 10, "Account Engagement", "Relationship", "Client Relationship (CXOs, decision makers, influencers)")
 
     # Options: ["Strong", "Neutral", "Weak"]
     if acc_engagement == "High (Existing+Good)":
-        # Rule: High Engagement implies at least Neutral or Strong relationship (No "Weak")
-        if target_status == "Lost":
-             # If target is Lost, we'd normally want Weak, but business logic prevents it here.
-             # We rely on other factors (Price/Solution) to drive the Loss.
-             # Skew to Neutral to be "worse" than Strong.
-             rel_weights = [0.2, 0.8] 
-        elif target_status == "Won":
-             rel_weights = [0.9, 0.1]
-        else:
-             rel_weights = [0.5, 0.5]
-        
-        client_rel = pick_weighted(["Strong", "Neutral"], rel_weights)
+         if target_status == "Lost": rel_weights = [0.2, 0.8] 
+         elif target_status == "Won": rel_weights = [0.9, 0.1]
+         else: rel_weights = [0.5, 0.5]
+         client_rel = pick_weighted(["Strong", "Neutral"], rel_weights)
     else:
-        # Standard weighted logic based on status
         client_rel = pick_weighted(["Strong", "Neutral", "Weak"], w)
-
-    score_rel_map = {"Strong": 10, "Neutral": 5, "Weak": 0}
-    score_rel = score_rel_map[client_rel]
-    contributions.append((score_rel, 10, "Client Relationship", client_rel, "Relationship", "Client Relationship (CXOs, decision makers, influencers)"))
+    add_score(client_rel, 10, "Client Relationship", "Relationship", "Client Relationship (CXOs, decision makers, influencers)")
     
-    # Options: ["Active & Available", "Passive", "Not Available"]
+    # Deal Coach (Maybe Missing)
     deal_coach = pick_weighted(["Active & Available", "Passive", "Not Available"], w)
-    score_coach_map = {"Active & Available": 10, "Passive": 5, "Not Available": 0}
-    score_coach = score_coach_map[deal_coach]
-    contributions.append((score_coach, 10, "Deal Coach", deal_coach, "Relationship", "Deal Coach availability/ fit"))
+    if is_early_stage and random.random() < 0.3: deal_coach = "Not Available"
+    add_score(deal_coach, 10, "Deal Coach", "Relationship", "Deal Coach availability/ fit")
     
-    score_relationship = score_engagement + score_rel + score_coach
-
-    # B. Competition
-    # Options: ["Top", "Middle", "Bottom"]
+    # B. Competition (Rank maybe missing)
     bidder_rank = pick_weighted(["Top", "Middle", "Bottom"], w)
-    score_rank_map = {"Top": 15, "Middle": 5, "Bottom": 0}
-    score_rank = score_rank_map[bidder_rank]
-    contributions.append((score_rank, 15, "Bidder Rank", bidder_rank, "Relationship", "Competition and Incumbency (strategic, CSAT, delivery track record)"))
+    if is_early_stage: bidder_rank = "Not Available" # Often unknown early
+    add_score(bidder_rank, 15, "Bidder Rank", "Relationship", "Competition and Incumbency (strategic, CSAT, delivery track record)")
     
-    score_inc_map = {"High (>50%)": 10, "Medium (20-50%)": 5, "Low (<20%)": 2, "None": 0}
-    score_incumbency = score_inc_map[incumbency]
-    contributions.append((score_incumbency, 10, "Incumbency Share", incumbency, "Commercials", "Incumbency advantage/discounting"))
+    # Incumbency (Known)
+    # incumbency generated above
+    add_score(incumbency, 10, "Incumbency Share", "Commercials", "Incumbency advantage/discounting")
     
-    score_competition = score_rank + score_incumbency
-
-    # C. Solution
-    # Options: ["Strong (Domain+Tech)", "Average", "Weak/None"]
+    # C. Solution (References known, others maybe not)
     references = pick_weighted(["Strong (Domain+Tech)", "Average", "Weak/None"], w)
-    score_refs_map = {"Strong (Domain+Tech)": 7, "Average": 3, "Weak/None": 0}
-    score_refs = score_refs_map[references]
-    contributions.append((score_refs, 7, "References", references, "Capability_or_Credentials", "References (Scale, Domain, Usecase) & Case Studies"))
+    add_score(references, 7, "References", "Capability_or_Credentials", "References (Scale, Domain, Usecase) & Case Studies")
     
-    # Options: ["Strong (Covers all)", "Average (Gaps)", "Weak"]
     sol_strength = pick_weighted(["Strong (Covers all)", "Average (Gaps)", "Weak"], w)
-    score_sol_map = {"Strong (Covers all)": 7, "Average (Gaps)": 3, "Weak": 0}
-    score_sol = score_sol_map[sol_strength]
-    contributions.append((score_sol, 7, "Solution Strength", sol_strength, "Solution", "Technical Response Quality (coherent, competitive, consultative, competitive)"))
+    if is_early_stage and random.random() < 0.5: sol_strength = "Not Available"
+    add_score(sol_strength, 7, "Solution Strength", "Solution", "Technical Response Quality (coherent, competitive, consultative, competitive)")
     
-    # Options: ["Positive", "Neutral", "Negative"]
     client_impression = pick_weighted(["Positive", "Neutral", "Negative"], w)
-    score_imp_map = {"Positive": 6, "Neutral": 3, "Negative": 0}
-    score_imp = score_imp_map[client_impression]
-    contributions.append((score_imp, 6, "Client Impression", client_impression, "Solution", "PoV/ Thought Leadership"))
+    if is_early_stage: client_impression = "Neutral" # Default early on
+    add_score(client_impression, 6, "Client Impression", "Solution", "PoV/ Thought Leadership")
     
-    score_solution = score_refs + score_sol + score_imp
-
-    # D. Orals
-    # Options: ["Strong", "At Par", "Weak"]
+    # D. Orals (Often missing early)
     orals_score_val = pick_weighted(["Strong", "At Par", "Weak"], w)
-    score_orals_map = {"Strong": 15, "At Par": 8, "Weak": 0}
-    score_orals = score_orals_map[orals_score_val]
-    contributions.append((score_orals, 15, "Orals Score", orals_score_val, "Solution", "Orals Performance"))
+    if is_early_stage: orals_score_val = "Not Available"
+    add_score(orals_score_val, 15, "Orals Score", "Solution", "Orals Performance")
 
-    # E. Price
-    # Options: ["Aligned", "Deviating", "No Intel"] -> Note: "No Intel" is worst (0)
+    # E. Price (Often missing early)
     price_alignment = pick_weighted(["Aligned", "Deviating", "No Intel"], w)
-    score_align_map = {"Aligned": 5, "Deviating": 2, "No Intel": 0}
-    score_align = score_align_map[price_alignment]
-    contributions.append((score_align, 5, "Price Alignment", price_alignment, "Commercials", "Deviation/fit to win price"))
+    if is_early_stage: price_alignment = "No Intel"
+    add_score(price_alignment, 5, "Price Alignment", "Commercials", "Deviation/fit to win price")
     
-    # Options: ["Lowest", "Competitive", "Expensive"]
     price_position = pick_weighted(["Lowest", "Competitive", "Expensive"], w)
-    score_pos_map = {"Lowest": 5, "Competitive": 3, "Expensive": 0}
-    score_pos = score_pos_map[price_position]
-    contributions.append((score_pos, 5, "Price Position", price_position, "Commercials", "Pricing model innovation/ Commercial Structure"))
+    if is_early_stage: price_position = "Not Available"
+    add_score(price_position, 5, "Price Position", "Commercials", "Pricing model innovation/ Commercial Structure")
     
-    score_price = score_align + score_pos
-
-    # --- TOTAL SCORE & STATUS ---
-    total_score = score_relationship + score_competition + score_solution + score_orals + score_price
-    total_score += random.randint(-2, 2)
+    # --- CALCULATE FINAL PERCENTAGE SCORE ---
+    if max_possible_score == 0:
+        final_percentage = 0
+    else:
+        final_percentage = (current_score / max_possible_score) * 100
+        
+    # Add noise
+    final_percentage += random.randint(-5, 5)
+    final_percentage = max(0, min(100, final_percentage))
     
-    # Force alignment with Target Status
-    # This prevents random "bad luck" features from dragging a "Won" deal into "Aborted/Lost" territory
+    # Store numerical score for checking
+    total_score = round(final_percentage, 2)
+    
+    # Force alignment with Target Status using the PERCENTAGE metric now
+    # 60% is a reasonable cutoff for Win if we only consider *available* data.
     if target_status == "Won" and total_score < 60:
-        total_score = random.randint(62, 85)
-    elif target_status == "Lost" and total_score > 45:
-        total_score = random.randint(20, 43)
+        total_score = random.randint(65, 95)
+    elif target_status == "Lost" and total_score > 50:
+        total_score = random.randint(20, 45)
     elif target_status == "Aborted":
-        if total_score < 46 or total_score > 59:
-             total_score = random.randint(48, 58)
+        if total_score < 40 or total_score > 60:
+             total_score = random.randint(45, 58)
     
     deal_status = target_status
     
@@ -265,6 +285,7 @@ def generate_record(index, target_status=None):
     # Impact = (Score / MaxScore) - 0.5.
     factor_impacts = []
     for score, max_score, name, val, l1, l2 in contributions:
+        # If max_score was 0 ?? No, add_score only adds if max_points > 0
         normalized = score / max_score if max_score > 0 else 0
         if normalized >= 0.7:
             sentiment = "(Positive)"
@@ -297,7 +318,7 @@ def generate_record(index, target_status=None):
         candidates += [f for f in factor_impacts if "Negative" not in f["sentiment"]]
     else:
         candidates = factor_impacts
-
+    
     selected = candidates[:3]
     
     if len(selected) > 0:
@@ -312,9 +333,9 @@ def generate_record(index, target_status=None):
 
     # Generate remarks
     if deal_status == "Won":
-        remarks = f"Won. Key drivers: {primary_l2}, {secondary_l2}. Total Score: {total_score}"
+        remarks = f"Won. Key drivers: {primary_l2}, {secondary_l2}. Win Prob Score: {total_score}%"
     else:
-        remarks = f"{deal_status}. Main issues: {primary_l2}, {secondary_l2}. Total Score: {total_score}"
+        remarks = f"{deal_status}. Main issues: {primary_l2}, {secondary_l2}. Win Prob Score: {total_score}%"
 
     return {
         "CRM ID": f"CRM{300000 + index}",
