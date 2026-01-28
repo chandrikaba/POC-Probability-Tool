@@ -120,24 +120,24 @@ for c in categorical_cols:
 # --- BUSINESS LOGIC: Explicit Ordinal Mapping ---
 # Map categorical values to numbers so the model understands "High" > "Low"
 ordinal_mappings = {
-    "Account Engagement": {"High (Existing+Good)": 3, "Medium (Existing+Poor)": 2, "Low (New Account)": 1},
-    "Client Relationship": {"Strong": 3, "Neutral": 2, "Weak": 1},
-    "Deal Coach": {"Active & Available": 3, "Passive": 2, "Not Available": 1},
-    "Bidder Rank": {"Top": 3, "Middle": 2, "Bottom": 1},
-    "Incumbency Share": {"High (>50%)": 3, "Medium (20-50%)": 2, "Low (<20%)": 1, "None": 0},
-    "References": {"Strong (Domain+Tech)": 3, "Average": 2, "Weak/None": 1},
-    "Solution Strength": {"Strong (Covers all)": 3, "Average (Gaps)": 2, "Weak": 1},
-    "Client Impression": {"Positive": 3, "Neutral": 2, "Negative": 1},
-    "Orals Score": {"Strong": 3, "At Par": 2, "Weak": 1},
-    "Price Alignment": {"Aligned": 3, "Deviating": 2, "No Intel": 1},
-    "Price Position": {"Lowest": 3, "Competitive": 2, "Expensive": 1}
+    "Account Engagement": {"High (Existing+Good)": 5, "Medium (Existing+Poor)": 3, "Low (New Account)": 0},
+    "Client Relationship": {"Strong": 5, "Neutral": 3, "Weak": 0},
+    "Deal Coach": {"Active & Available": 5, "Passive": 3, "Not Available": 0},
+    "Bidder Rank": {"Top": 5, "Middle": 3, "Bottom": 0},
+    "Incumbency Share": {"High (>50%)": 5, "Medium (20-50%)": 3, "Low (<20%)": 0, "None": 0},
+    "References": {"Strong (Domain+Tech)": 5, "Average": 3, "Weak/None": 0},
+    "Solution Strength": {"Strong (Covers all)": 5, "Average (Gaps)": 3, "Weak": 0},
+    "Client Impression": {"Positive": 5, "Neutral": 3, "Negative": 0},
+    "Orals Score": {"Strong": 5, "At Par": 3, "Weak": 0},
+    "Price Alignment": {"Aligned": 5, "Deviating": 0, "No Intel": 2},
+    "Price Position": {"Lowest": 5, "Competitive": 3, "Expensive": 0}
 }
 
 # Apply mappings
 for col, mapping in ordinal_mappings.items():
     if col in X.columns:
-        # Map values, fill unknown with 0 (lowest)
-        X[col] = X[col].map(mapping).fillna(0)
+        # Map values, fill unknown with 2 (Neutral-ish, better than Weak)
+        X[col] = X[col].map(mapping).fillna(2)
         # Move from categorical to numeric list
         if col in categorical_cols:
             categorical_cols.remove(col)

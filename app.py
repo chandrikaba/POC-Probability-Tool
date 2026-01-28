@@ -436,112 +436,82 @@ elif page == "🔮 Predictions":
                             # Preprocessing - same as training
                             X_input = raw_df.drop(columns=[c for c in drop_cols if c in raw_df.columns], errors="ignore").copy()
                             
-                            # --- SMART COLUMN MAPPING ---
-                            # Map common variations of column names to the required standard names
-                            col_map = {
-                                "Engagement": "Account Engagement", "Acc Engagement": "Account Engagement",
-                                "Relationship": "Client Relationship", "Client Rel": "Client Relationship",
-                                "Coach": "Deal Coach", "Deal Coach Availability": "Deal Coach",
-                                "Rank": "Bidder Rank", "Ranking": "Bidder Rank",
-                                "Incumbency": "Incumbency Share", "Incumbent": "Incumbency Share",
-                                "Refs": "References", "Case Studies": "References",
-                                "Solution": "Solution Strength", "Sol Strength": "Solution Strength",
-                                "Impression": "Client Impression", "Client Imp": "Client Impression",
-                                "Orals": "Orals Score", "Presentation": "Orals Score",
-                                "Price Align": "Price Alignment", "Win Price": "Price Alignment",
-                                "Price Pos": "Price Position", "Position": "Price Position"
+                            # --- Data Cleaning & Normalization (MATCHING TRAINING SCRIPT) ---
+                            # Map shorthand/variant inputs to model categories
+                            normalization_map = {
+                                "Account Engagement": {
+                                    "high": "High (Existing+Good)", "good": "High (Existing+Good)",
+                                    "medium": "Medium (Existing+Poor)", "average": "Medium (Existing+Poor)",
+                                    "low": "Low (New Account)", "new": "Low (New Account)", "none": "Low (New Account)"
+                                },
+                                "Client Relationship": {
+                                    "high": "Strong", "strong": "Strong", "good": "Strong",
+                                    "medium": "Neutral", "neutral": "Neutral", "average": "Neutral",
+                                    "low": "Weak", "weak": "Weak", "poor": "Weak", "new": "Weak", "none": "Weak"
+                                },
+                                "Incumbency Share": {
+                                    "high": "High (>50%)", ">50%": "High (>50%)",
+                                    "medium": "Medium (20-50%)", "20-50%": "Medium (20-50%)",
+                                    "low": "Low (<20%)", "<20%": "Low (<20%)", "none": "None"
+                                },
+                                "Bidder Rank": {
+                                    "1": "Top", "top": "Top", "first": "Top",
+                                    "2": "Middle", "middle": "Middle", "second": "Middle",
+                                    "3": "Bottom", "bottom": "Bottom", "last": "Bottom"
+                                },
+                                "Price Alignment": {
+                                    "high": "Aligned", "standard": "Aligned", "aligned": "Aligned",
+                                    "low": "Deviating", "deviating": "Deviating", "bad": "Deviating"
+                                },
+                                "Solution Strength": {
+                                    "high": "Strong (Covers all)", "strong": "Strong (Covers all)",
+                                    "medium": "Average (Gaps)", "average": "Average (Gaps)",
+                                    "low": "Weak", "weak": "Weak"
+                                }
                             }
-                            X_input = X_input.rename(columns=col_map)
+
+                            for col, mapping in normalization_map.items():
+                                if col in X_input.columns:
+                                    # Normalize to lowercase for matching, then map
+                                    def normalize_val(val):
+                                        if pd.isna(val): return val
+                                        s = str(val).lower().strip()
+                                        for key, target in mapping.items():
+                                            if key in s: # simple substring match
+                                                 return target
+                                        return val # Return original if no match
+                                    
+                                    X_input[col] = X_input[col].apply(normalize_val)
                             
                             # Now identify numeric vs categorical based on actual dtypes
                             numeric_cols = X_input.select_dtypes(include=['int64', 'float64']).columns.tolist()
                             categorical_cols = X_input.select_dtypes(include=['object']).columns.tolist()
 
-                            # Convert columns to match expected types from training
-                            for col in X_input.columns:
-                                if col in expected_types:
-                                    if expected_types[col] in ['int64', 'float64']:
-                                        # This should be numeric
-                                        X_input[col] = pd.to_numeric(X_input[col], errors='coerce')
-                                    else:
-                                        # This should be categorical
-                                        X_input[col] = X_input[col].astype(str)
-                            
-                            # --- BUSINESS LOGIC: Explicit Ordinal Mapping (Must match training) ---
-                            # Expanded to accept both full strings and simple keywords for flexibility
+                            # --- BUSINESS LOGIC: Explicit Ordinal Mapping (Must align with training) ---
                             ordinal_mappings = {
-                                "Account Engagement": {
-                                    "High (Existing+Good)": 3, "High": 3, 
-                                    "Medium (Existing+Poor)": 2, "Medium": 2, 
-                                    "Low (New Account)": 1, "Low": 1
-                                },
-                                "Client Relationship": {
-                                    "Strong": 3, "Neutral": 2, "Weak": 1
-                                },
-                                "Deal Coach": {
-                                    "Active & Available": 3, "Active": 3, 
-                                    "Passive": 2, 
-                                    "Not Available": 1, "None": 1
-                                },
-                                "Bidder Rank": {
-                                    "Top": 3, "Middle": 2, "Bottom": 1
-                                },
-                                "Incumbency Share": {
-                                    "High (>50%)": 3, "High": 3, 
-                                    "Medium (20-50%)": 2, "Medium": 2, 
-                                    "Low (<20%)": 1, "Low": 1, 
-                                    "None": 0
-                                },
-                                "References": {
-                                    "Strong (Domain+Tech)": 3, "Strong": 3, 
-                                    "Average": 2, 
-                                    "Weak/None": 1, "Weak": 1, "None": 1
-                                },
-                                "Solution Strength": {
-                                    "Strong (Covers all)": 3, "Strong": 3, 
-                                    "Average (Gaps)": 2, "Average": 2, 
-                                    "Weak": 1
-                                },
-                                "Client Impression": {
-                                    "Positive": 3, "Neutral": 2, "Negative": 1
-                                },
-                                "Orals Score": {
-                                    "Strong": 3, "At Par": 2, "Weak": 1
-                                },
-                                "Price Alignment": {
-                                    "Aligned": 3, "Deviating": 2, "No Intel": 1
-                                },
-                                "Price Position": {
-                                    "Lowest": 3, "Competitive": 2, "Expensive": 1
-                                }
+                                "Account Engagement": {"High (Existing+Good)": 5, "Medium (Existing+Poor)": 3, "Low (New Account)": 0},
+                                "Client Relationship": {"Strong": 5, "Neutral": 3, "Weak": 0},
+                                "Deal Coach": {"Active & Available": 5, "Passive": 3, "Not Available": 0},
+                                "Bidder Rank": {"Top": 5, "Middle": 3, "Bottom": 0},
+                                "Incumbency Share": {"High (>50%)": 5, "Medium (20-50%)": 3, "Low (<20%)": 0, "None": 0},
+                                "References": {"Strong (Domain+Tech)": 5, "Average": 3, "Weak/None": 0},
+                                "Solution Strength": {"Strong (Covers all)": 5, "Average (Gaps)": 3, "Weak": 0},
+                                "Client Impression": {"Positive": 5, "Neutral": 3, "Negative": 0},
+                                "Orals Score": {"Strong": 5, "At Par": 3, "Weak": 0},
+                                "Price Alignment": {"Aligned": 5, "Deviating": 0, "No Intel": 2},
+                                "Price Position": {"Lowest": 5, "Competitive": 3, "Expensive": 0}
                             }
 
-                            # Apply mappings (Case Insensitive)
+                            # Apply mappings
                             for col, mapping in ordinal_mappings.items():
                                 if col in X_input.columns:
-                                    # Create a lower-case mapping for flexibility
-                                    lower_mapping = {k.lower(): v for k, v in mapping.items()}
+                                    # Map values, fill unknown with 2 (Neutral)
+                                    # Force numeric conversion so dtype becomes int/float instead of object
+                                    X_input[col] = pd.to_numeric(X_input[col].map(mapping).fillna(2), errors='coerce').fillna(2)
                                     
-                                    def map_value(val):
-                                        if pd.isna(val) or val == "nan" or val == "UNKNOWN": return 0
-                                        val_str = str(val).strip()
-                                        # Try exact match
-                                        if val_str in mapping: return mapping[val_str]
-                                        # Try lower case match
-                                        if val_str.lower() in lower_mapping: return lower_mapping[val_str.lower()]
-                                        # Default to 0
-                                        return 0
-
-                                    X_input[col] = X_input[col].apply(map_value)
-                                    
-                                    # SAFETY NET: Force conversion to numeric
-                                    X_input[col] = pd.to_numeric(X_input[col], errors='coerce').fillna(0)
-                                    
-                                    # Move from categorical to numeric list
-                                    if col in categorical_cols:
-                                        categorical_cols.remove(col)
-                                    if col not in numeric_cols:
-                                        numeric_cols.append(col)
+                                    # Update lists for imputation
+                                    if col in categorical_cols: categorical_cols.remove(col)
+                                    if col not in numeric_cols: numeric_cols.append(col)
 
                             # Fill remaining categorical with UNKNOWN
                             for col in categorical_cols:
@@ -574,25 +544,26 @@ elif page == "🔮 Predictions":
                             def calculate_business_score(row):
                                 score = 0
                                 # 1. Relationship (Max 30)
-                                score += {3: 10, 2: 5, 1: 0, 0: 0}.get(row.get("Account Engagement", 0), 0)
-                                score += {3: 10, 2: 5, 1: 0, 0: 0}.get(row.get("Client Relationship", 0), 0)
-                                score += {3: 10, 2: 5, 1: 0, 0: 0}.get(row.get("Deal Coach", 0), 0)
+                                # Values are now 5 (High), 3 (Med), 0 (Low)
+                                score += {5: 10, 3: 5, 2:2, 0: 0}.get(row.get("Account Engagement", 0), 0)
+                                score += {5: 10, 3: 5, 2:2, 0: 0}.get(row.get("Client Relationship", 0), 0)
+                                score += {5: 10, 3: 5, 2:2, 0: 0}.get(row.get("Deal Coach", 0), 0)
                                 
                                 # 2. Competition (Max 25)
-                                score += {3: 15, 2: 5, 1: 0, 0: 0}.get(row.get("Bidder Rank", 0), 0)
-                                score += {3: 10, 2: 5, 1: 2, 0: 0}.get(row.get("Incumbency Share", 0), 0)
+                                score += {5: 15, 3: 5, 2:2, 0: 0}.get(row.get("Bidder Rank", 0), 0)
+                                score += {5: 10, 3: 5, 2:2, 0: 0}.get(row.get("Incumbency Share", 0), 0)
                                 
                                 # 3. Solution (Max 20)
-                                score += {3: 7, 2: 3, 1: 0, 0: 0}.get(row.get("References", 0), 0)
-                                score += {3: 7, 2: 3, 1: 0, 0: 0}.get(row.get("Solution Strength", 0), 0)
-                                score += {3: 6, 2: 3, 1: 0, 0: 0}.get(row.get("Client Impression", 0), 0)
+                                score += {5: 7, 3: 3, 2:1, 0: 0}.get(row.get("References", 0), 0)
+                                score += {5: 7, 3: 3, 2:1, 0: 0}.get(row.get("Solution Strength", 0), 0)
+                                score += {5: 6, 3: 3, 2:1, 0: 0}.get(row.get("Client Impression", 0), 0)
                                 
                                 # 4. Orals (Max 15)
-                                score += {3: 15, 2: 8, 1: 0, 0: 0}.get(row.get("Orals Score", 0), 0)
+                                score += {5: 15, 3: 8, 2:4, 0: 0}.get(row.get("Orals Score", 0), 0)
                                 
                                 # 5. Price (Max 10)
-                                score += {3: 5, 2: 2, 1: 0, 0: 0}.get(row.get("Price Alignment", 0), 0)
-                                score += {3: 5, 2: 3, 1: 0, 0: 0}.get(row.get("Price Position", 0), 0)
+                                score += {5: 5, 0: 2, 2: 0}.get(row.get("Price Alignment", 0), 0)
+                                score += {5: 5, 3: 2, 0: 0}.get(row.get("Price Position", 0), 0)
                                 
                                 return score
 
@@ -602,7 +573,7 @@ elif page == "🔮 Predictions":
                             # Determine status based on strict logic
                             def get_logic_status(score):
                                 if score >= 60: return "Won"
-                                if score <= 45: return "Lost"
+                                if score <= 40: return "Lost"
                                 return "Aborted/Risk"
                                 
                             result_df["Business Logic Status"] = result_df["Business Logic Score"].apply(get_logic_status)

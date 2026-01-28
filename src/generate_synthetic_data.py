@@ -154,6 +154,27 @@ def generate_record(index, target_status=None):
     # the model learns that missing data doesn't auto-mean "Lost".
     
     is_early_stage = random.choice([True, False]) # 50% chance of being incomplete
+
+    # Special Case: sparse_win
+    # If target is Won and early stage, we force a "Solution Only" win scenario 15% of the time
+    # to ensure the model learns that "Strong Solution + Missing Details" can still be a Win.
+    force_sparse_win = False
+    if target_status == "Won" and is_early_stage and random.random() < 0.30: # increased prob
+        force_sparse_win = True
+    
+    # Special Case: force_relationship_loss
+    # Even with a Strong Solution, a deal can be Lost due to:
+    # - Weak Client Relationship (no access to decision makers)
+    # - Poor Price Alignment (pricing not competitive)
+    # - Net-New (NN) account with no existing relationship
+    # This models scenarios like the Dyson case where fundamentals override solution quality.
+    force_relationship_loss = False
+    if target_status == "Lost" and random.random() < 0.25:  # 25% of Lost deals
+        force_relationship_loss = True
+        # Force NN (Net-New) to ensure no incumbency advantage
+        type_of_business = "NN"
+        incumbency = "None"
+        acc_engagement = "Low (New Account)"
     
     # Track scores
     current_score = 0
@@ -198,59 +219,105 @@ def generate_record(index, target_status=None):
         max_possible_score += max_points
         contributions.append((score, max_points, name, val, l1, l2))
 
-    # A. Relationship (Always Available)
-    score_engagement_map = {"High (Existing+Good)": 10, "Medium (Existing+Poor)": 5, "Low (New Account)": 0}
-    # acc_engagement generated above
+    # A. Relationship (Can now be missing in very early stages)
+    # ---------------------------------------------------------
+    # Options: ["High (Existing+Good)", "Medium (Existing+Poor)", "Low (New Account)"]
+    # Logic: If early stage, might be unknown.
+    if force_relationship_loss:
+        # Already set to Low (New Account) for relationship loss
+        pass  # acc_engagement already set above
+    elif force_sparse_win:
+        acc_engagement = "Unknown"
+    elif is_early_stage and random.random() < 0.5:
+        acc_engagement = "Unknown"
+    else:
+        # Normal generation
+        if type_of_business == "NN":
+            acc_engagement = "Low (New Account)"
+        else:
+            if incumbency == "High (>50%)":
+                acc_engagement = pick_weighted(["High (Existing+Good)", "Medium (Existing+Poor)"], [w[0], w[1]+w[2]])
+            else:
+                acc_engagement = pick_weighted(["High (Existing+Good)", "Medium (Existing+Poor)"], [w[0], w[1]+w[2]])
+    
     add_score(acc_engagement, 10, "Account Engagement", "Relationship", "Client Relationship (CXOs, decision makers, influencers)")
 
+    # Client Relationship
     # Options: ["Strong", "Neutral", "Weak"]
-    if acc_engagement == "High (Existing+Good)":
+    if force_relationship_loss:
+        # Force Weak relationship for relationship-based losses
+        client_rel = "Weak"
+    elif force_sparse_win:
+        client_rel = "Unknown"
+    elif is_early_stage and random.random() < 0.5:
+        client_rel = "Unknown"
+    elif acc_engagement == "High (Existing+Good)":
          if target_status == "Lost": rel_weights = [0.2, 0.8] 
          elif target_status == "Won": rel_weights = [0.9, 0.1]
          else: rel_weights = [0.5, 0.5]
          client_rel = pick_weighted(["Strong", "Neutral"], rel_weights)
     else:
         client_rel = pick_weighted(["Strong", "Neutral", "Weak"], w)
+        
     add_score(client_rel, 10, "Client Relationship", "Relationship", "Client Relationship (CXOs, decision makers, influencers)")
     
     # Deal Coach (Maybe Missing)
     deal_coach = pick_weighted(["Active & Available", "Passive", "Not Available"], w)
-    if is_early_stage and random.random() < 0.3: deal_coach = "Not Available"
+    if force_sparse_win or (is_early_stage and random.random() < 0.3): deal_coach = "Not Available"
     add_score(deal_coach, 10, "Deal Coach", "Relationship", "Deal Coach availability/ fit")
     
     # B. Competition (Rank maybe missing)
     bidder_rank = pick_weighted(["Top", "Middle", "Bottom"], w)
-    if is_early_stage: bidder_rank = "Not Available" # Often unknown early
+    if force_sparse_win or is_early_stage: bidder_rank = "Not Available" # Often unknown early
     add_score(bidder_rank, 15, "Bidder Rank", "Relationship", "Competition and Incumbency (strategic, CSAT, delivery track record)")
     
     # Incumbency (Known)
-    # incumbency generated above
+    # incumbency generated above (but could be None for NN)
+    if force_sparse_win or (is_early_stage and random.random() < 0.3):
+        incumbency = "Unknown"
+        
     add_score(incumbency, 10, "Incumbency Share", "Commercials", "Incumbency advantage/discounting")
     
     # C. Solution (References known, others maybe not)
     references = pick_weighted(["Strong (Domain+Tech)", "Average", "Weak/None"], w)
+    if force_sparse_win: references = "Weak/None" # Or Unknown? Let's say absent.
     add_score(references, 7, "References", "Capability_or_Credentials", "References (Scale, Domain, Usecase) & Case Studies")
     
     sol_strength = pick_weighted(["Strong (Covers all)", "Average (Gaps)", "Weak"], w)
-    if is_early_stage and random.random() < 0.5: sol_strength = "Not Available"
+    if force_relationship_loss:
+        # Force Strong solution for relationship-based losses
+        # This teaches the model that strong solution alone isn't enough
+        sol_strength = "Strong (Covers all)"
+    elif force_sparse_win:
+        sol_strength = "Strong (Covers all)" # Force Strong for sparse win
+    elif is_early_stage and random.random() < 0.5: 
+        sol_strength = "Not Available"
     add_score(sol_strength, 7, "Solution Strength", "Solution", "Technical Response Quality (coherent, competitive, consultative, competitive)")
     
     client_impression = pick_weighted(["Positive", "Neutral", "Negative"], w)
-    if is_early_stage: client_impression = "Neutral" # Default early on
+    if force_sparse_win or is_early_stage: client_impression = "Neutral" 
     add_score(client_impression, 6, "Client Impression", "Solution", "PoV/ Thought Leadership")
     
     # D. Orals (Often missing early)
     orals_score_val = pick_weighted(["Strong", "At Par", "Weak"], w)
-    if is_early_stage: orals_score_val = "Not Available"
+    if force_sparse_win or is_early_stage: orals_score_val = "Not Available"
     add_score(orals_score_val, 15, "Orals Score", "Solution", "Orals Performance")
 
     # E. Price (Often missing early)
     price_alignment = pick_weighted(["Aligned", "Deviating", "No Intel"], w)
-    if is_early_stage: price_alignment = "No Intel"
+    if force_relationship_loss:
+        # Force Deviating price for relationship-based losses
+        price_alignment = "Deviating"
+    elif force_sparse_win or is_early_stage: 
+        price_alignment = "No Intel"
     add_score(price_alignment, 5, "Price Alignment", "Commercials", "Deviation/fit to win price")
     
     price_position = pick_weighted(["Lowest", "Competitive", "Expensive"], w)
-    if is_early_stage: price_position = "Not Available"
+    if force_relationship_loss:
+        # Force Expensive price position for relationship-based losses
+        price_position = "Expensive"
+    elif force_sparse_win or is_early_stage: 
+        price_position = "Not Available"
     add_score(price_position, 5, "Price Position", "Commercials", "Pricing model innovation/ Commercial Structure")
     
     # --- CALCULATE FINAL PERCENTAGE SCORE ---
