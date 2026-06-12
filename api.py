@@ -30,7 +30,7 @@ app = FastAPI(
 # Define paths
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "xgb_classifier.pkl")
-SYNTHETIC_DATA_PATH = os.path.join(PROJECT_ROOT, "data", "output", "synthetic_deals.xlsx")
+SYNTHETIC_DATA_PATH = os.path.join(PROJECT_ROOT, "data", "output", "synthetic_data_v3.xlsx")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data", "output")
 
 # Pydantic models for request/response
@@ -44,6 +44,7 @@ class PredictionResponse(BaseModel):
     message: str
     predictions_file: str
     total_records: int
+    warnings: List[str] = []
 
 class TrainingResponse(BaseModel):
     success: bool
@@ -206,26 +207,67 @@ async def predict_deal_outcomes(file: UploadFile = File(..., description="Excel 
         
         # Read uploaded file
         contents = await file.read()
-        raw_df = pd.read_excel(io.BytesIO(contents), skiprows=1)
+        raw_df = pd.read_excel(io.BytesIO(contents))
         
         # Load model and label encoder
         model = joblib.load(MODEL_PATH)
         le = joblib.load(encoder_path)
+        
+        validation_warnings = []
         
         # Load synthetic data to get expected column structure
         if not os.path.exists(SYNTHETIC_DATA_PATH):
             raise HTTPException(status_code=400, detail="Synthetic data not found. Please train the model first.")
         
         synthetic_df = pd.read_excel(SYNTHETIC_DATA_PATH)
-        drop_cols = ["CRM ID", "Opportunity Name", "Account Name", "Detailed Remarks", "Deal Status"]
+        drop_cols = ["CRM ID", "Opportunity Name", "Account Name", "Detailed Remarks", "Deal Status", "Stage Description", "SST Sales Stage"]
         expected_cols = [c for c in synthetic_df.columns if c not in drop_cols]
         
-        # Get the expected types for each column from synthetic data
+        # 1. Normalize column names to strip spaces
+        raw_df.columns = raw_df.columns.astype(str).str.strip()
+        
+        # Get Expected TCV column variant
+        tcv_col = None
+        for col_variant in ["Expected TCV ($Mn)", "Expected TCV ($Mn) "]:
+            if col_variant in raw_df.columns:
+                tcv_col = col_variant
+                break
+        if not tcv_col:
+            tcv_col = "Expected TCV ($Mn)"
+            
+        # 2. Enforce all mandatory columns are present and not empty
+        mandatory_cols = [
+            "SBU", "Account Name", "Opportunity Name", "SST Sales Stage", "Stage Description",
+            "Type of Business", "Account Engagement", "Client Relationship", "Deal Coach",
+            "References", "Solution Strength", "Client Impression", "Orals Score", "Price Alignment"
+        ]
+        mandatory_cols.append(tcv_col)
+        
+        # Check if any mandatory column is missing entirely
+        missing_cols = [col for col in mandatory_cols if col not in raw_df.columns]
+        if missing_cols:
+            raise HTTPException(status_code=400, detail=f"Missing mandatory columns: {', '.join(missing_cols)}")
+            
+        # Check for empty cells in any of the mandatory columns (only for Active deals)
+        raw_df["Stage Description"] = raw_df["Stage Description"].astype(str).str.strip()
+        active_rows = raw_df[raw_df["Stage Description"].str.lower() == "active"]
+        
+        for col in mandatory_cols:
+            if col in raw_df.columns:
+                empty_mask = active_rows[col].isna() | (active_rows[col].astype(str).str.strip().replace({'nan': '', 'None': '', 'NaN': '', 'none': '', 'null': '', 'NULL': ''}) == '')
+                if empty_mask.any():
+                    empty_indices = empty_mask[empty_mask].index.tolist()
+                    row_numbers = [idx + 2 for idx in empty_indices[:5]] # +2 offset for excel 1-based index and header row
+                    rows_str = ", ".join(map(str, row_numbers))
+                    if len(empty_indices) > 5:
+                        rows_str += "..."
+                    validation_warnings.append(f"'{col}' Field empty at Excel row(s): {rows_str}. Enter Input")
+        
+        # Add missing columns with appropriate default values based on expected type
         expected_types = {}
         for col in expected_cols:
             expected_types[col] = synthetic_df[col].dtype
-        
-        # Add missing columns with appropriate default values based on expected type
+            
         for col in expected_cols:
             if col not in raw_df.columns:
                 if expected_types[col] in ['int64', 'float64']:
@@ -240,10 +282,8 @@ async def predict_deal_outcomes(file: UploadFile = File(..., description="Excel 
         for col in X_input.columns:
             if col in expected_types:
                 if expected_types[col] in ['int64', 'float64']:
-                    # This should be numeric
                     X_input[col] = pd.to_numeric(X_input[col], errors='coerce')
                 else:
-                    # This should be categorical
                     X_input[col] = X_input[col].astype(str)
         
         # Now identify numeric vs categorical based on actual dtypes
@@ -263,27 +303,111 @@ async def predict_deal_outcomes(file: UploadFile = File(..., description="Excel 
                 if pd.isna(median_val):
                     median_val = 0.0
                 X_input[col] = X_input[col].fillna(median_val)
-
+                
+        # --- BUSINESS LOGIC: Explicit Ordinal Mapping ---
+        ordinal_mappings = {
+            "Account Engagement": {"High (Existing+Good)": 5, "Medium (Existing+Poor)": 3, "Low (New Account)": 0},
+            "Client Relationship": {"Strong": 5, "Neutral": 3, "Weak": 0},
+            "Deal Coach": {"Active & Available": 5, "Passive": 3, "Not Available": 0},
+            "Bidder Rank": {"Top": 5, "Middle": 3, "Bottom": 0},
+            "Incumbency Share": {"High (>50%)": 5, "Medium (20-50%)": 3, "Low (<20%)": 0, "None": 0},
+            "References": {"Strong (Domain+Tech)": 5, "Average": 3, "Weak/None": 0},
+            "Solution Strength": {"Strong (Covers all)": 5, "Average (Gaps)": 3, "Weak": 0},
+            "Client Impression": {"Positive": 5, "Neutral": 3, "Negative": 0},
+            "Orals Score": {"Strong": 5, "At Par": 3, "Weak": 0},
+            "Price Alignment": {"On par with Client Budget": 5, "Above Client Budget with Rationale/Caveats": 3, "Above Client Budget": 0, "Client Budget Info not available": 2},
+            "Price Position": {"Lowest": 5, "Competitive": 3, "Expensive": 0},
+            "Current RFP Stage": {"Negotiation": 15, "Defence Cleared": 10, "Proposal Submitted": 5, "RFP Received": 0}
+        }
         
-        # Predict using pipeline
-        pred_numeric = model.predict(X_input)
-        pred_labels = le.inverse_transform(pred_numeric)
+        # Map values to numbers for business logic calculations and predictions
+        for col, mapping in ordinal_mappings.items():
+            if col in X_input.columns:
+                X_input[col] = pd.to_numeric(X_input[col].map(mapping).fillna(2), errors='coerce').fillna(2)
+                
+        # Determine Active vs Non-Active Deals based on Stage Description
+        raw_df["Stage Description"] = raw_df["Stage Description"].astype(str).str.strip()
+        active_mask = raw_df["Stage Description"].str.lower() == "active"
+        non_active_mask = ~active_mask
         
-        # Get probabilities
-        pred_probs = model.predict_proba(X_input)
-        
-        # Create result dataframe
+        # Initialize output columns in result_df
         result_df = raw_df.copy()
-        result_df["Predicted Deal Status"] = pred_labels
+        result_df["Predicted Deal Status"] = ""
+        result_df["Business Logic Score"] = ""
+        result_df["Business Logic Status"] = ""
+        result_df["Win Probability"] = ""
         
-        # Add probability columns
-        for idx, class_name in enumerate(le.classes_):
-            result_df[f"Probability_{class_name}"] = pred_probs[:, idx]
-        
+        for class_name in le.classes_:
+            result_df[f"Probability_{class_name}"] = ""
+            
+        def calculate_business_score(row):
+            score = 0
+            score += {5: 10, 3: 5, 2: 2, 0: 0}.get(row.get("Account Engagement", 0), 0)
+            score += {5: 10, 3: 5, 2: 2, 0: 0}.get(row.get("Client Relationship", 0), 0)
+            score += {5: 10, 3: 5, 2: 2, 0: 0}.get(row.get("Deal Coach", 0), 0)
+            score += {5: 15, 3: 5, 2: 2, 0: 0}.get(row.get("Bidder Rank", 0), 0)
+            score += {5: 10, 3: 5, 2: 2, 0: 0}.get(row.get("Incumbency Share", 0), 0)
+            score += {5: 7, 3: 3, 2: 1, 0: 0}.get(row.get("References", 0), 0)
+            score += {5: 7, 3: 3, 2: 1, 0: 0}.get(row.get("Solution Strength", 0), 0)
+            score += {5: 6, 3: 3, 2: 1, 0: 0}.get(row.get("Client Impression", 0), 0)
+            score += {5: 15, 3: 8, 2: 4, 0: 0}.get(row.get("Orals Score", 0), 0)
+            score += {5: 5, 0: 2, 2: 0}.get(row.get("Price Alignment", 0), 0)
+            score += {5: 5, 3: 2, 0: 0}.get(row.get("Price Position", 0), 0)
+            return score
+            
+        def get_logic_status(score):
+            if score >= 60: return "Won"
+            if score <= 40: return "Lost"
+            return "Aborted/Risk"
+            
+        def get_prob_category(p):
+            pct = round(p * 100)
+            if pct > 80: return "Very High"
+            elif pct >= 61: return "High"
+            elif pct >= 41: return "Medium"
+            else: return "Low"
+            
+        # Process Active Deals
+        if active_mask.any():
+            X_input_active = X_input[active_mask].copy()
+            X_input_active.columns = X_input_active.columns.astype(str)
+            
+            # Predict using model
+            pred_numeric_active = model.predict(X_input_active)
+            pred_labels_active = le.inverse_transform(pred_numeric_active)
+            pred_probs_active = model.predict_proba(X_input_active)
+            
+            # Business logic score
+            active_business_scores = X_input_active.apply(calculate_business_score, axis=1)
+            
+            result_df.loc[active_mask, "Business Logic Status"] = active_business_scores.apply(get_logic_status)
+            result_df.loc[active_mask, "Business Logic Score"] = [f"{int(s)}%" for s in active_business_scores]
+            result_df.loc[active_mask, "Predicted Deal Status"] = pred_labels_active
+            
+            win_idx = list(le.classes_).index("Won") if "Won" in list(le.classes_) else 0
+            active_win_probs = pred_probs_active[:, win_idx]
+            result_df.loc[active_mask, "Win Probability"] = [get_prob_category(p) for p in active_win_probs]
+            
+            for idx, class_name in enumerate(le.classes_):
+                result_df.loc[active_mask, f"Probability_{class_name}"] = [
+                    f"{round(p * 100)}%" for p in pred_probs_active[:, idx]
+                ]
+                
+        # Process Non-Active Deals
+        if non_active_mask.any():
+            clean_statuses = raw_df.loc[non_active_mask, "Stage Description"].str.strip()
+            result_df.loc[non_active_mask, "Predicted Deal Status"] = clean_statuses
+            result_df.loc[non_active_mask, "Business Logic Status"] = clean_statuses
+            result_df.loc[non_active_mask, "Business Logic Score"] = "N/A"
+            result_df.loc[non_active_mask, "Win Probability"] = "N/A"
+            
+            for class_name in le.classes_:
+                result_df.loc[non_active_mask, f"Probability_{class_name}"] = "N/A"
+                
         # Remove Deal Status column if exists
         if "Deal Status" in result_df.columns:
             result_df = result_df.drop(columns=["Deal Status"])
-        
+            
         # Save to output
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_filename = f"predictions_{timestamp}.xlsx"
@@ -296,7 +420,8 @@ async def predict_deal_outcomes(file: UploadFile = File(..., description="Excel 
             success=True,
             message="Predictions generated successfully",
             predictions_file=output_filename,
-            total_records=len(result_df)
+            total_records=len(result_df),
+            warnings=validation_warnings
         )
         
     except HTTPException:

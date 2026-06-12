@@ -13,9 +13,137 @@ import subprocess
 import joblib
 from datetime import datetime
 import io
+import re
+import numpy as np
 from sklearn.preprocessing import LabelEncoder
 
 import plotly.express as px
+
+def get_deal_score_breakdown(row):
+    # Map row values using ordinal_mappings if they are text
+    ordinal_mappings = {
+        "Account Engagement": {"High (Existing+Good)": 5, "Medium (Existing+Poor)": 3, "Low (New Account)": 0},
+        "Client Relationship": {"Strong": 5, "Neutral": 3, "Weak": 0},
+        "Deal Coach": {"Active & Available": 5, "Passive": 3, "Not Available": 0},
+        "Bidder Rank": {"Top": 5, "Middle": 3, "Bottom": 0},
+        "Incumbency Share": {"High (>50%)": 5, "Medium (20-50%)": 3, "Low (<20%)": 0, "None": 0},
+        "References": {"Strong (Domain+Tech)": 5, "Average": 3, "Weak/None": 0},
+        "Solution Strength": {"Strong (Covers all)": 5, "Average (Gaps)": 3, "Weak": 0},
+        "Client Impression": {"Positive": 5, "Neutral": 3, "Negative": 0},
+        "Orals Score": {"Strong": 5, "At Par": 3, "Weak": 0},
+        "Price Alignment": {"On par with Client Budget": 5, "Above Client Budget with Rationale/Caveats": 3, "Above Client Budget": 0, "Client Budget Info not available": 2},
+        "Price Position": {"Lowest": 5, "Competitive": 3, "Expensive": 0},
+        "Current RFP Stage": {"Negotiation": 15, "Defence Cleared": 10, "Proposal Submitted": 5, "RFP Received": 0}
+    }
+    
+    # We need to get the mapped value (numeric) for each attribute in the row
+    def get_mapped_val(col, default_val=2):
+        val = row.get(col)
+        if pd.isna(val):
+            return default_val
+        if isinstance(val, (int, float, np.integer, np.floating)):
+            return float(val)
+        val_str = str(val).strip()
+        # Look up in normalization maps if needed, or direct mapping
+        # First check direct mapping
+        mapping = ordinal_mappings.get(col, {})
+        if val_str in mapping:
+            return mapping[val_str]
+        # Check substring match
+        for k, v in mapping.items():
+            if k.lower() in val_str.lower() or val_str.lower() in k.lower():
+                return v
+        return default_val
+
+    # Get scores for each field
+    eng_val = row.get("Account Engagement", "Unknown")
+    eng_pts = {5: 10, 3: 5, 2: 2, 0: 0}.get(get_mapped_val("Account Engagement"), 0)
+    
+    rel_val = row.get("Client Relationship", "Unknown")
+    rel_pts = {5: 10, 3: 5, 2: 2, 0: 0}.get(get_mapped_val("Client Relationship"), 0)
+    
+    coach_val = row.get("Deal Coach", "Unknown")
+    coach_pts = {5: 10, 3: 5, 2: 2, 0: 0}.get(get_mapped_val("Deal Coach"), 0)
+    
+    rank_val = row.get("Bidder Rank", "Unknown")
+    rank_pts = {5: 15, 3: 5, 2: 2, 0: 0}.get(get_mapped_val("Bidder Rank"), 0)
+    
+    inc_val = row.get("Incumbency Share", "Unknown")
+    inc_pts = {5: 10, 3: 5, 2: 2, 0: 0}.get(get_mapped_val("Incumbency Share"), 0)
+    
+    ref_val = row.get("References", "Unknown")
+    ref_pts = {5: 7, 3: 3, 2: 1, 0: 0}.get(get_mapped_val("References"), 0)
+    
+    sol_val = row.get("Solution Strength", "Unknown")
+    sol_pts = {5: 7, 3: 3, 2: 1, 0: 0}.get(get_mapped_val("Solution Strength"), 0)
+    
+    imp_val = row.get("Client Impression", "Unknown")
+    imp_pts = {5: 6, 3: 3, 2: 1, 0: 0}.get(get_mapped_val("Client Impression"), 0)
+    
+    orals_val = row.get("Orals Score", "Unknown")
+    orals_pts = {5: 15, 3: 8, 2: 4, 0: 0}.get(get_mapped_val("Orals Score"), 0)
+    
+    pa_val = row.get("Price Alignment", "Unknown")
+    pa_pts = {5: 5, 0: 2, 2: 0}.get(get_mapped_val("Price Alignment", 2), 0)
+    
+    pp_val = row.get("Price Position", "Unknown")
+    pp_pts = {5: 5, 3: 2, 0: 0}.get(get_mapped_val("Price Position"), 0)
+    
+    # Calculate group totals
+    relationship_score = eng_pts + rel_pts + coach_pts
+    competition_score = rank_pts + inc_pts
+    solution_score = ref_pts + sol_pts + imp_pts
+    orals_score = orals_pts
+    price_score = pa_pts + pp_pts
+    
+    total = relationship_score + competition_score + solution_score + orals_score + price_score
+    
+    return {
+        "groups": {
+            "Relationship": {
+                "score": relationship_score,
+                "max": 30,
+                "details": [
+                    {"parameter": "Account Engagement", "value": eng_val, "points": eng_pts, "max_pts": 10},
+                    {"parameter": "Client Relationship", "value": rel_val, "points": rel_pts, "max_pts": 10},
+                    {"parameter": "Deal Coach", "value": coach_val, "points": coach_pts, "max_pts": 10}
+                ]
+            },
+            "Competition": {
+                "score": competition_score,
+                "max": 25,
+                "details": [
+                    {"parameter": "Bidder Rank", "value": rank_val, "points": rank_pts, "max_pts": 15},
+                    {"parameter": "Incumbency Share", "value": inc_val, "points": inc_pts, "max_pts": 10}
+                ]
+            },
+            "Solution": {
+                "score": solution_score,
+                "max": 20,
+                "details": [
+                    {"parameter": "References", "value": ref_val, "points": ref_pts, "max_pts": 7},
+                    {"parameter": "Solution Strength", "value": sol_val, "points": sol_pts, "max_pts": 7},
+                    {"parameter": "Client Impression", "value": imp_val, "points": imp_pts, "max_pts": 6}
+                ]
+            },
+            "Orals": {
+                "score": orals_score,
+                "max": 15,
+                "details": [
+                    {"parameter": "Orals Score", "value": orals_val, "points": orals_pts, "max_pts": 15}
+                ]
+            },
+            "Price": {
+                "score": price_score,
+                "max": 10,
+                "details": [
+                    {"parameter": "Price Alignment", "value": pa_val, "points": pa_pts, "max_pts": 5},
+                    {"parameter": "Price Position", "value": pp_val, "points": pp_pts, "max_pts": 5}
+                ]
+            }
+        },
+        "total": total
+    }
 
 # Page configuration
 st.set_page_config(
@@ -370,6 +498,95 @@ elif page == "🤖 Model Training":
 elif page == "🔮 Predictions":
     st.markdown('<div class="section-header">Predict Deal Outcomes</div>', unsafe_allow_html=True)
     
+    # Check if we need to display deal calculation details
+    if "show_calc" in st.query_params:
+        crm_id = st.query_params["show_calc"]
+        selected_deal = None
+        
+        # 1. Check if we have predicted_df in session state
+        if 'predicted_df' in st.session_state and st.session_state.predicted_df is not None:
+            df_to_search = st.session_state.predicted_df
+            match = df_to_search[df_to_search['CRM ID'].astype(str).str.strip() == str(crm_id).strip()]
+            if not match.empty:
+                selected_deal = match.iloc[0]
+                
+        # 2. Fallback: check last prediction file
+        if selected_deal is None and st.session_state.last_prediction_file and os.path.exists(st.session_state.last_prediction_file):
+            try:
+                df_latest = pd.read_excel(st.session_state.last_prediction_file)
+                match = df_latest[df_latest['CRM ID'].astype(str).str.strip() == str(crm_id).strip()]
+                if not match.empty:
+                    selected_deal = match.iloc[0]
+            except Exception:
+                pass
+                
+        # 3. Fallback: scan prediction files in output directory
+        if selected_deal is None and os.path.exists(OUTPUT_DIR):
+            pred_files = [f for f in os.listdir(OUTPUT_DIR) if f.startswith("predictions_") and f.endswith(".xlsx")]
+            pred_files.sort(reverse=True)
+            for file in pred_files[:5]:
+                try:
+                    df_latest = pd.read_excel(os.path.join(OUTPUT_DIR, file))
+                    match = df_latest[df_latest['CRM ID'].astype(str).str.strip() == str(crm_id).strip()]
+                    if not match.empty:
+                        selected_deal = match.iloc[0]
+                        break
+                except Exception:
+                    pass
+                    
+        if selected_deal is not None:
+            breakdown = get_deal_score_breakdown(selected_deal)
+            
+            with st.container(border=True):
+                st.markdown(f"### 🔍 Score Calculation Breakdown for CRM ID: **{crm_id}**")
+                
+                # Setup side-by-side Close button and summary
+                col_txt, col_btn = st.columns([6, 1])
+                with col_txt:
+                    st.write(f"**Account Name:** {selected_deal.get('Account Name', 'N/A')} | **Opportunity Name:** {selected_deal.get('Opportunity Name', 'N/A')}")
+                with col_btn:
+                    if st.button("✖ Close", type="secondary", use_container_width=True):
+                        st.query_params.clear()
+                        st.rerun()
+                
+                # Metric cards
+                cols = st.columns(5)
+                group_colors = {
+                    "Relationship": "#1f77b4",
+                    "Competition": "#ff7f0e",
+                    "Solution": "#2ca02c",
+                    "Orals": "#d62728",
+                    "Price": "#9467bd"
+                }
+                for i, (g_name, g_data) in enumerate(breakdown["groups"].items()):
+                    with cols[i]:
+                        pct = (g_data['score'] / g_data['max']) * 100
+                        st.markdown(f"""
+                        <div style="background-color:#f8f9fa; padding:12px; border-radius:5px; border-left: 5px solid {group_colors[g_name]}; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                            <span style="font-size:12px; color:#555; font-weight:bold;">{g_name} (Max {g_data['max']})</span><br>
+                            <span style="font-size:22px; font-weight:bold; color:{group_colors[g_name]};">{g_data['score']} pts</span><br>
+                            <span style="font-size:12px; color:#888;">{pct:.0f}% of Max</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                st.markdown(f"### **Total Business Logic Score: {breakdown['total']}%**")
+                
+                # Detailed breakdown table
+                table_rows = []
+                for g_name, g_data in breakdown["groups"].items():
+                    for d in g_data["details"]:
+                        table_rows.append({
+                            "Category Group": g_name,
+                            "Factor/Parameter": d["parameter"],
+                            "Value Entered": d["value"],
+                            "Points Awarded": d["points"],
+                            "Max Points Possible": d["max_pts"]
+                        })
+                st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
+                st.markdown("---")
+        else:
+            st.warning(f"Could not find calculation details for CRM ID: {crm_id}. Please run the prediction first.")
+    
     if not st.session_state.model_trained:
         st.markdown("""
         <div class="error-box">
@@ -402,10 +619,57 @@ elif page == "🔮 Predictions":
                 predict_btn = st.button("🔮 Generate Predictions", type="primary", use_container_width=True)
                 
                 if predict_btn:
+                    import numpy as np
+                    
+                    # 1. Normalize column names to strip spaces
+                    raw_df.columns = raw_df.columns.astype(str).str.strip()
+                    
+                    # Get Expected TCV column variant
+                    tcv_col = None
+                    for col_variant in ["Expected TCV ($Mn)", "Expected TCV ($Mn) "]:
+                        if col_variant in raw_df.columns:
+                            tcv_col = col_variant
+                            break
+                    if not tcv_col:
+                        tcv_col = "Expected TCV ($Mn)"
+                        
+                    # 2. Enforce all mandatory columns are present and not empty
+                    mandatory_cols = [
+                        "SBU", "Account Name", "Opportunity Name", "SST Sales Stage", "Stage Description",
+                        "Type of Business", "Account Engagement", "Client Relationship", "Deal Coach",
+                        "References", "Solution Strength", "Client Impression", "Orals Score", "Price Alignment"
+                    ]
+                    mandatory_cols.append(tcv_col)
+                    
+                    # Check if any mandatory column is missing entirely
+                    missing_cols = [col for col in mandatory_cols if col not in raw_df.columns]
+                    if missing_cols:
+                        st.error(f"Exception Error - Missing mandatory columns in the uploaded file: {', '.join(missing_cols)}. Please check the input file.")
+                        st.stop()
+                        
+                    # Check for empty cells in any of the mandatory columns (only for Active deals)
+                    raw_df["Stage Description"] = raw_df["Stage Description"].astype(str).str.strip()
+                    active_rows = raw_df[raw_df["Stage Description"].str.lower() == "active"]
+                    
+                    validation_warnings = []
+                    for col in mandatory_cols:
+                        if col in raw_df.columns:
+                            empty_mask = active_rows[col].isna() | (active_rows[col].astype(str).str.strip().replace({'nan': '', 'None': '', 'NaN': '', 'none': '', 'null': '', 'NULL': ''}) == '')
+                            if empty_mask.any():
+                                empty_indices = empty_mask[empty_mask].index.tolist()
+                                # Get row numbers matching the original raw_df indices
+                                row_numbers = [idx + 2 for idx in empty_indices[:5]] # +2 offset for excel 1-based index and header row
+                                rows_str = ", ".join(map(str, row_numbers))
+                                if len(empty_indices) > 5:
+                                    rows_str += "..."
+                                validation_warnings.append(f"'{col}' Field empty at Excel row(s): {rows_str}. Enter Input")
+                                
+                    if validation_warnings:
+                        warnings_text = "\n".join([f"- {w}" for w in validation_warnings])
+                        st.warning(f"⚠️ **Validation Warning:** Some mandatory fields are empty. Using default/neutral assumptions to proceed:\n\n{warnings_text}")
+                            
                     with st.spinner("Generating predictions..."):
                         try:
-                            import numpy as np
-                            
                             # Load model and label encoder
                             model = joblib.load(MODEL_PATH)
                             encoder_path = os.path.join(PROJECT_ROOT, "models", "label_encoder.pkl")
@@ -417,7 +681,7 @@ elif page == "🔮 Predictions":
                                 st.stop()
                             
                             synthetic_df = pd.read_excel(SYNTHETIC_DATA_PATH)
-                            drop_cols = ["CRM ID", "Opportunity Name", "Account Name", "Detailed Remarks", "Deal Status"]
+                            drop_cols = ["CRM ID", "Opportunity Name", "Account Name", "Detailed Remarks", "Deal Status", "Stage Description", "SST Sales Stage"]
                             expected_cols = [c for c in synthetic_df.columns if c not in drop_cols]
                             
                             # Get the expected types for each column from synthetic data
@@ -437,7 +701,6 @@ elif page == "🔮 Predictions":
                             X_input = raw_df.drop(columns=[c for c in drop_cols if c in raw_df.columns], errors="ignore").copy()
                             
                             # --- Data Cleaning & Normalization (MATCHING TRAINING SCRIPT) ---
-                            # Map shorthand/variant inputs to model categories
                             normalization_map = {
                                 "Account Engagement": {
                                     "high": "High (Existing+Good)", "good": "High (Existing+Good)",
@@ -460,8 +723,10 @@ elif page == "🔮 Predictions":
                                     "3": "Bottom", "bottom": "Bottom", "last": "Bottom"
                                 },
                                 "Price Alignment": {
-                                    "high": "Aligned", "standard": "Aligned", "aligned": "Aligned",
-                                    "low": "Deviating", "deviating": "Deviating", "bad": "Deviating"
+                                    "on par": "On par with Client Budget", "budget": "On par with Client Budget", "aligned": "On par with Client Budget",
+                                    "caveats": "Above Client Budget with Rationale/Caveats", "rationale": "Above Client Budget with Rationale/Caveats",
+                                    "above": "Above Client Budget", "deviating": "Above Client Budget",
+                                    "info not available": "Client Budget Info not available", "no intel": "Client Budget Info not available"
                                 },
                                 "Solution Strength": {
                                     "high": "Strong (Covers all)", "strong": "Strong (Covers all)",
@@ -469,25 +734,23 @@ elif page == "🔮 Predictions":
                                     "low": "Weak", "weak": "Weak"
                                 }
                             }
-
+                            
                             for col, mapping in normalization_map.items():
                                 if col in X_input.columns:
-                                    # Normalize to lowercase for matching, then map
                                     def normalize_val(val):
                                         if pd.isna(val): return val
                                         s = str(val).lower().strip()
                                         for key, target in mapping.items():
-                                            if key in s: # simple substring match
+                                            if key in s:
                                                  return target
-                                        return val # Return original if no match
-                                    
+                                        return val
                                     X_input[col] = X_input[col].apply(normalize_val)
                             
-                            # Now identify numeric vs categorical based on actual dtypes
+                            # Identify numeric vs categorical
                             numeric_cols = X_input.select_dtypes(include=['int64', 'float64']).columns.tolist()
                             categorical_cols = X_input.select_dtypes(include=['object']).columns.tolist()
-
-                            # --- BUSINESS LOGIC: Explicit Ordinal Mapping (Must align with training) ---
+                            
+                            # --- BUSINESS LOGIC: Explicit Ordinal Mapping ---
                             ordinal_mappings = {
                                 "Account Engagement": {"High (Existing+Good)": 5, "Medium (Existing+Poor)": 3, "Low (New Account)": 0},
                                 "Client Relationship": {"Strong": 5, "Neutral": 3, "Weak": 0},
@@ -498,102 +761,142 @@ elif page == "🔮 Predictions":
                                 "Solution Strength": {"Strong (Covers all)": 5, "Average (Gaps)": 3, "Weak": 0},
                                 "Client Impression": {"Positive": 5, "Neutral": 3, "Negative": 0},
                                 "Orals Score": {"Strong": 5, "At Par": 3, "Weak": 0},
-                                "Price Alignment": {"Aligned": 5, "Deviating": 0, "No Intel": 2},
-                                "Price Position": {"Lowest": 5, "Competitive": 3, "Expensive": 0}
+                                "Price Alignment": {"On par with Client Budget": 5, "Above Client Budget with Rationale/Caveats": 3, "Above Client Budget": 0, "Client Budget Info not available": 2},
+                                "Price Position": {"Lowest": 5, "Competitive": 3, "Expensive": 0},
+                                "Current RFP Stage": {"Negotiation": 15, "Defence Cleared": 10, "Proposal Submitted": 5, "RFP Received": 0}
                             }
-
-                            # Apply mappings
+                            
                             for col, mapping in ordinal_mappings.items():
                                 if col in X_input.columns:
-                                    # Map values, fill unknown with 2 (Neutral)
-                                    # Force numeric conversion so dtype becomes int/float instead of object
                                     X_input[col] = pd.to_numeric(X_input[col].map(mapping).fillna(2), errors='coerce').fillna(2)
-                                    
-                                    # Update lists for imputation
                                     if col in categorical_cols: categorical_cols.remove(col)
                                     if col not in numeric_cols: numeric_cols.append(col)
-
-                            # Fill remaining categorical with UNKNOWN
+                                    
                             for col in categorical_cols:
                                 X_input[col] = X_input[col].fillna("UNKNOWN")
-                            
-                            # Impute numeric columns
+                                
                             for col in numeric_cols:
                                 if X_input[col].isna().any():
                                     median_val = X_input[col].median()
                                     if pd.isna(median_val):
                                         median_val = 0.0
                                     X_input[col] = X_input[col].fillna(median_val)
-
+                                    
+                            # Determine Active vs Non-Active Deals based on Stage Description
+                            raw_df["Stage Description"] = raw_df["Stage Description"].astype(str).str.strip()
+                            active_mask = raw_df["Stage Description"].str.lower() == "active"
+                            non_active_mask = ~active_mask
                             
-                            # Predict using pipeline
-                            # Ensure all column names are strings to avoid XGBoost error
-                            X_input.columns = X_input.columns.astype(str)
-                            pred_numeric = model.predict(X_input)
-                            pred_labels = le.inverse_transform(pred_numeric)
-                            
-                            # Get probabilities
-                            pred_probs = model.predict_proba(X_input)
-                            
-                            # Create result dataframe
+                            # Initialize output columns in result_df
                             result_df = raw_df.copy()
-                            result_df["Predicted Deal Status"] = pred_labels
+                            result_df["Predicted Deal Status"] = ""
+                            result_df["Business Logic Score"] = ""
+                            result_df["Business Logic Status"] = ""
+                            result_df["Win Probability"] = ""
                             
-                            # --- RULE-BASED VALIDATION (Transparency Check) ---
-                            # Calculate the score based on the 5 criteria to show the user "Why"
+                            for class_name in le.classes_:
+                                result_df[f"Probability_{class_name}"] = ""
+                                
+                            # Define the helper score calculators locally
                             def calculate_business_score(row):
                                 score = 0
-                                # 1. Relationship (Max 30)
-                                # Values are now 5 (High), 3 (Med), 0 (Low)
                                 score += {5: 10, 3: 5, 2:2, 0: 0}.get(row.get("Account Engagement", 0), 0)
                                 score += {5: 10, 3: 5, 2:2, 0: 0}.get(row.get("Client Relationship", 0), 0)
                                 score += {5: 10, 3: 5, 2:2, 0: 0}.get(row.get("Deal Coach", 0), 0)
-                                
-                                # 2. Competition (Max 25)
                                 score += {5: 15, 3: 5, 2:2, 0: 0}.get(row.get("Bidder Rank", 0), 0)
                                 score += {5: 10, 3: 5, 2:2, 0: 0}.get(row.get("Incumbency Share", 0), 0)
-                                
-                                # 3. Solution (Max 20)
                                 score += {5: 7, 3: 3, 2:1, 0: 0}.get(row.get("References", 0), 0)
                                 score += {5: 7, 3: 3, 2:1, 0: 0}.get(row.get("Solution Strength", 0), 0)
                                 score += {5: 6, 3: 3, 2:1, 0: 0}.get(row.get("Client Impression", 0), 0)
-                                
-                                # 4. Orals (Max 15)
                                 score += {5: 15, 3: 8, 2:4, 0: 0}.get(row.get("Orals Score", 0), 0)
-                                
-                                # 5. Price (Max 10)
                                 score += {5: 5, 0: 2, 2: 0}.get(row.get("Price Alignment", 0), 0)
                                 score += {5: 5, 3: 2, 0: 0}.get(row.get("Price Position", 0), 0)
-                                
                                 return score
-
-                            # Apply calculation using the mapped X_input values
-                            result_df["Business Logic Score"] = X_input.apply(calculate_business_score, axis=1)
-                            
-                            # Determine status based on strict logic
+                                
                             def get_logic_status(score):
                                 if score >= 60: return "Won"
                                 if score <= 40: return "Lost"
                                 return "Aborted/Risk"
                                 
-                            result_df["Business Logic Status"] = result_df["Business Logic Score"].apply(get_logic_status)
-                            
-                            # Add probability columns
-                            for idx, class_name in enumerate(le.classes_):
-                                result_df[f"Probability_{class_name}"] = pred_probs[:, idx]
-                            
-                            # Remove Deal Status column if exists
+                            def get_prob_category(p):
+                                pct = round(p * 100)
+                                if pct > 80: return "Very High"
+                                elif pct >= 61: return "High"
+                                elif pct >= 41: return "Medium"
+                                else: return "Low"
+                                
+                            # Get base URL for links
+                            try:
+                                host = st.context.headers.get("host", "localhost:8501")
+                                protocol = "https" if st.context.headers.get("x-forwarded-proto") == "https" else "http"
+                                base_url = f"{protocol}://{host}"
+                            except Exception:
+                                base_url = "http://localhost:8501"
+                                
+                            # Process Active Deals
+                            if active_mask.any():
+                                X_input_active = X_input[active_mask].copy()
+                                X_input_active.columns = X_input_active.columns.astype(str)
+                                
+                                # Predict using model
+                                pred_numeric_active = model.predict(X_input_active)
+                                pred_labels_active = le.inverse_transform(pred_numeric_active)
+                                pred_probs_active = model.predict_proba(X_input_active)
+                                
+                                # Business logic score
+                                active_business_scores = X_input_active.apply(calculate_business_score, axis=1)
+                                
+                                result_df.loc[active_mask, "Business Logic Status"] = active_business_scores.apply(get_logic_status)
+                                result_df.loc[active_mask, "Predicted Deal Status"] = pred_labels_active
+                                
+                                # Business Logic Score formatted as hyperlink URL
+                                result_df.loc[active_mask, "Business Logic Score"] = [
+                                    f"{base_url}/?show_calc={crm_id}&score={int(score)}%"
+                                    for crm_id, score in zip(raw_df.loc[active_mask, "CRM ID"], active_business_scores)
+                                ]
+                                
+                                win_idx = list(le.classes_).index("Won") if "Won" in list(le.classes_) else 0
+                                active_win_probs = pred_probs_active[:, win_idx]
+                                result_df.loc[active_mask, "Win Probability"] = [get_prob_category(p) for p in active_win_probs]
+                                
+                                for idx, class_name in enumerate(le.classes_):
+                                    result_df.loc[active_mask, f"Probability_{class_name}"] = [
+                                        f"{round(p * 100)}%" for p in pred_probs_active[:, idx]
+                                    ]
+                                    
+                            # Process Non-Active Deals (statuses won, lost, hold etc. displayed as is)
+                            if non_active_mask.any():
+                                clean_statuses = raw_df.loc[non_active_mask, "Stage Description"].str.strip()
+                                result_df.loc[non_active_mask, "Predicted Deal Status"] = clean_statuses
+                                result_df.loc[non_active_mask, "Business Logic Status"] = clean_statuses
+                                result_df.loc[non_active_mask, "Business Logic Score"] = "N/A"
+                                result_df.loc[non_active_mask, "Win Probability"] = "N/A"
+                                
+                                for class_name in le.classes_:
+                                    result_df.loc[non_active_mask, f"Probability_{class_name}"] = "N/A"
+                                    
+                            # Remove Deal Status column if it exists in raw_df to avoid duplication
                             if "Deal Status" in result_df.columns:
                                 result_df = result_df.drop(columns=["Deal Status"])
+                                
+                            # Cache the predicted dataframe in session state for lookup
+                            st.session_state.predicted_df = result_df
                             
-                            # Save to output
+                            # Save to output - create clean export file without local URLs in score column
+                            export_df = result_df.copy()
+                            for idx, row in export_df.iterrows():
+                                score_val = row["Business Logic Score"]
+                                if pd.notna(score_val) and str(score_val).startswith("http"):
+                                    match = re.search(r"score=([^&]*)", str(score_val))
+                                    if match:
+                                        export_df.at[idx, "Business Logic Score"] = match.group(1)
+                                        
                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                             output_filename = f"predictions_{timestamp}.xlsx"
                             output_path = os.path.join(OUTPUT_DIR, output_filename)
                             
                             os.makedirs(OUTPUT_DIR, exist_ok=True)
-                            result_df.to_excel(output_path, index=False)
-                            
+                            export_df.to_excel(output_path, index=False)
                             st.session_state.last_prediction_file = output_path
                             
                             st.markdown("""
@@ -606,32 +909,41 @@ elif page == "🔮 Predictions":
                             st.markdown("### 📊 Prediction Results")
                             
                             # Filter columns for display
-                            display_cols = ["CRM ID", "Account Name", "Predicted Deal Status", "Business Logic Status", "Business Logic Score"]
-                            # Add probability columns dynamically based on classes
+                            display_cols = ["CRM ID", "Account Name", "Opportunity Name", "SST Sales Stage", "Stage Description", "Predicted Deal Status", "Win Probability", "Business Logic Status", "Business Logic Score"]
                             prob_cols = [col for col in result_df.columns if col.startswith("Probability_")]
                             display_cols.extend(prob_cols)
                             
-                            # Ensure columns exist before selecting
                             valid_cols = [c for c in display_cols if c in result_df.columns]
-                            st.dataframe(result_df[valid_cols], use_container_width=True)
+                            
+                            # Display with LinkColumn formatting for Business Logic Score
+                            st.dataframe(
+                                result_df[valid_cols],
+                                column_config={
+                                    "Business Logic Score": st.column_config.LinkColumn(
+                                        label="Business Logic Score",
+                                        display_text=r"score=([^&]*)"
+                                    )
+                                },
+                                use_container_width=True
+                            )
                             
                             # Statistics
                             col1, col2, col3, col4 = st.columns(4)
                             with col1:
                                 st.metric("Total Predictions", len(result_df))
                             with col2:
-                                won_count = len(result_df[result_df['Predicted Deal Status'] == 'Won'])
+                                won_count = len(result_df[result_df['Predicted Deal Status'].astype(str).str.strip().str.lower().str.startswith('won')])
                                 st.metric("Predicted Won", won_count)
                             with col3:
-                                lost_count = len(result_df[result_df['Predicted Deal Status'] == 'Lost'])
+                                lost_count = len(result_df[result_df['Predicted Deal Status'].astype(str).str.strip().str.lower().str.startswith('lost')])
                                 st.metric("Predicted Lost", lost_count)
                             with col4:
-                                aborted_count = len(result_df[result_df['Predicted Deal Status'] == 'Aborted'])
+                                aborted_count = len(result_df[result_df['Predicted Deal Status'].astype(str).str.strip().str.lower().str.startswith('aborted')])
                                 st.metric("Predicted Aborted", aborted_count)
                             
                             # Download button
                             buffer = io.BytesIO()
-                            result_df.to_excel(buffer, index=False)
+                            export_df.to_excel(buffer, index=False)
                             buffer.seek(0)
                             st.download_button(
                                 label="📥 Download Predictions",

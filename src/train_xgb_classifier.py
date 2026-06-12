@@ -105,7 +105,8 @@ y = le.fit_transform(target)
 drop_cols = [
     "CRM ID", "Opportunity Name", "Account Name", "Detailed Remarks", 
     "Calculated Score", # Outcome variable (leakage)
-    "Primary L1", "Primary L2", "Secondary L1", "Secondary L2", "Tertiary L1", "Tertiary L2" # Explanatory variables (leakage or unavailable at input)
+    "Primary L1", "Primary L2", "Secondary L1", "Secondary L2", "Tertiary L1", "Tertiary L2", # Explanatory variables (leakage or unavailable at input)
+    "SST Sales Stage", "Stage Description"
 ]
 X = df.drop(columns=[c for c in drop_cols if c in df.columns] + ["Deal Status"], errors="ignore").copy()
 
@@ -129,8 +130,9 @@ ordinal_mappings = {
     "Solution Strength": {"Strong (Covers all)": 5, "Average (Gaps)": 3, "Weak": 0},
     "Client Impression": {"Positive": 5, "Neutral": 3, "Negative": 0},
     "Orals Score": {"Strong": 5, "At Par": 3, "Weak": 0},
-    "Price Alignment": {"Aligned": 5, "Deviating": 0, "No Intel": 2},
-    "Price Position": {"Lowest": 5, "Competitive": 3, "Expensive": 0}
+    "Price Alignment": {"On par with Client Budget": 5, "Above Client Budget with Rationale/Caveats": 3, "Above Client Budget": 0, "Client Budget Info not available": 2},
+    "Price Position": {"Lowest": 5, "Competitive": 3, "Expensive": 0},
+    "Current RFP Stage": {"Negotiation": 15, "Defence Cleared": 10, "Proposal Submitted": 5, "RFP Received": 0}
 }
 
 # Apply mappings
@@ -266,7 +268,7 @@ if do_tuning:
         param_distributions=param_dist,
         n_iter=20,
         cv=3,
-        scoring="f1",
+        scoring="f1_weighted",
         verbose=2,
         random_state=42,
         n_jobs=-1

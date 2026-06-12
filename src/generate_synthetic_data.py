@@ -104,12 +104,16 @@ def generate_record(index, target_status=None):
     # Probabilities for [Best_Option, Mid_Option, Worst_Option]
     if target_status == "Won":
         w = [0.90, 0.10, 0.0] # Almost exclusively Top/High
+        w4 = [0.80, 0.15, 0.0, 0.05]
     elif target_status == "Lost":
         w = [0.0, 0.10, 0.90] # Almost exclusively Low/Weak
+        w4 = [0.0, 0.10, 0.70, 0.20]
     elif target_status == "Aborted":
         w = [0.10, 0.80, 0.10]   # Skewed to Average/Mid
+        w4 = [0.05, 0.60, 0.10, 0.25]
     else:
         w = [0.33, 0.33, 0.33] # Random
+        w4 = [0.25, 0.25, 0.25, 0.25]
 
     # ---------------------------------------------------------
     # 1. Enforce Business Logic Consistency
@@ -211,13 +215,21 @@ def generate_record(index, target_status=None):
         elif name == "Orals Score":
             score = {"Strong": 15, "At Par": 8, "Weak": 0}.get(val, 0)
         elif name == "Price Alignment":
-            score = {"Aligned": 5, "Deviating": 2, "No Intel": 0}.get(val, 0)
+            score = {"On par with Client Budget": 5, "Above Client Budget with Rationale/Caveats": 3, "Above Client Budget": 0, "Client Budget Info not available": 2}.get(val, 0)
         elif name == "Price Position":
             score = {"Lowest": 5, "Competitive": 3, "Expensive": 0}.get(val, 0)
+        elif name == "Current RFP Stage":
+            score = {"Negotiation": 15, "Defence Cleared": 10, "Proposal Submitted": 5, "RFP Received": 0}.get(val, 0)
             
         current_score += score
         max_possible_score += max_points
         contributions.append((score, max_points, name, val, l1, l2))
+
+    # RFP Stage
+    rfp_stage = pick_weighted(["Negotiation", "Defence Cleared", "Proposal Submitted", "RFP Received"], w4)
+    if is_early_stage and random.random() < 0.7:
+        rfp_stage = pick_weighted(["Proposal Submitted", "RFP Received"], [0.5, 0.5])
+    add_score(rfp_stage, 15, "Current RFP Stage", "Process", "RFP Stage")
 
     # A. Relationship (Can now be missing in very early stages)
     # ---------------------------------------------------------
@@ -304,12 +316,12 @@ def generate_record(index, target_status=None):
     add_score(orals_score_val, 15, "Orals Score", "Solution", "Orals Performance")
 
     # E. Price (Often missing early)
-    price_alignment = pick_weighted(["Aligned", "Deviating", "No Intel"], w)
+    price_alignment = pick_weighted(["On par with Client Budget", "Above Client Budget with Rationale/Caveats", "Above Client Budget", "Client Budget Info not available"], w4)
     if force_relationship_loss:
         # Force Deviating price for relationship-based losses
-        price_alignment = "Deviating"
+        price_alignment = "Above Client Budget"
     elif force_sparse_win or is_early_stage: 
-        price_alignment = "No Intel"
+        price_alignment = "Client Budget Info not available"
     add_score(price_alignment, 5, "Price Alignment", "Commercials", "Deviation/fit to win price")
     
     price_position = pick_weighted(["Lowest", "Competitive", "Expensive"], w)
@@ -411,9 +423,12 @@ def generate_record(index, target_status=None):
         "Deal Status": deal_status,
         "Account Name": account_name,
         "Opportunity Name": f"Opportunity {index}",
+        "SST Sales Stage": random.choice(['P1', 'P2', 'P3', 'P3.1', 'P4', 'P5', 'P0', 'P-3', 'P-2', 'P-1']),
+        "Stage Description": random.choice(['Active', 'Won ', 'Hold', 'Aborted', 'Lost', 'Opp Identified']),
         "Expected TCV ($Mn)": tcv,
         "Deal Size bucket": deal_size_bucket,
         "Type of Business": type_of_business,
+        "Current RFP Stage": rfp_stage,
         
         # New Factors
         "Account Engagement": acc_engagement,

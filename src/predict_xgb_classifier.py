@@ -133,8 +133,10 @@ try:
             "3": "Bottom", "bottom": "Bottom", "last": "Bottom"
         },
         "Price Alignment": {
-            "high": "Aligned", "standard": "Aligned", "aligned": "Aligned",
-            "low": "Deviating", "deviating": "Deviating", "bad": "Deviating"
+            "on par": "On par with Client Budget", "budget": "On par with Client Budget", "aligned": "On par with Client Budget",
+            "caveats": "Above Client Budget with Rationale/Caveats", "rationale": "Above Client Budget with Rationale/Caveats",
+            "above": "Above Client Budget", "deviating": "Above Client Budget",
+            "info not available": "Client Budget Info not available", "no intel": "Client Budget Info not available"
         },
         "Solution Strength": {
             "high": "Strong (Covers all)", "strong": "Strong (Covers all)",
@@ -167,8 +169,9 @@ try:
         "Solution Strength": {"Strong (Covers all)": 5, "Average (Gaps)": 3, "Weak": 0},
         "Client Impression": {"Positive": 5, "Neutral": 3, "Negative": 0},
         "Orals Score": {"Strong": 5, "At Par": 3, "Weak": 0},
-        "Price Alignment": {"Aligned": 5, "Deviating": 0, "No Intel": 2},
-        "Price Position": {"Lowest": 5, "Competitive": 3, "Expensive": 0}
+        "Price Alignment": {"On par with Client Budget": 5, "Above Client Budget with Rationale/Caveats": 3, "Above Client Budget": 0, "Client Budget Info not available": 2},
+        "Price Position": {"Lowest": 5, "Competitive": 3, "Expensive": 0},
+        "Current RFP Stage": {"Negotiation": 15, "Defence Cleared": 10, "Proposal Submitted": 5, "RFP Received": 0}
     }
 
     # Apply mappings
