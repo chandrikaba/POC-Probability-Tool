@@ -97,7 +97,7 @@ st.markdown('<div class="main-header">📊 Deal Win Probability Prediction Tool<
 
 # Sidebar
 with st.sidebar:
-    st.image("https://via.placeholder.com/300x100/1f77b4/ffffff?text=Deal+Win+AI", use_container_width=True)
+    st.image("assets/deal_win_banner.png", use_container_width=True)
     st.markdown("### 🎯 Navigation")
     
     # Developer Mode Toggle
