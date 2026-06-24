@@ -621,25 +621,40 @@ elif page == "🔮 Predictions":
                 if predict_btn:
                     import numpy as np
                     
-                    # 1. Normalize column names to strip spaces
+                    # 1. Normalize column names to strip spaces and handle casing variations
                     raw_df.columns = raw_df.columns.astype(str).str.strip()
                     
-                    # Get Expected TCV column variant
-                    tcv_col = None
-                    for col_variant in ["Expected TCV ($Mn)", "Expected TCV ($Mn) "]:
-                        if col_variant in raw_df.columns:
-                            tcv_col = col_variant
-                            break
-                    if not tcv_col:
-                        tcv_col = "Expected TCV ($Mn)"
-                        
+                    standard_cols = [
+                        "SBU", "Account Name", "Opportunity Name", "SST Sales Stage", "Stage Description",
+                        "Type of Business", "Account Engagement", "Client Relationship", "Deal Coach",
+                        "References", "Solution Strength", "Client Impression", "Orals Score", "Price Alignment",
+                        "Expected TCV ($Mn)"
+                    ]
+                    
+                    # Create mapping from lowercase standard name to standard name
+                    standard_map = {col.lower(): col for col in standard_cols}
+                    standard_map["expected tcv ($mn) "] = "Expected TCV ($Mn)"
+                    standard_map["expected tcv"] = "Expected TCV ($Mn)"
+                    
+                    # Rename columns in raw_df that match standard columns case-insensitively
+                    new_columns = []
+                    for col in raw_df.columns:
+                        col_lower = col.lower()
+                        if col_lower in standard_map:
+                            new_columns.append(standard_map[col_lower])
+                        else:
+                            new_columns.append(col)
+                    raw_df.columns = new_columns
+                    
+                    tcv_col = "Expected TCV ($Mn)"
+                    
                     # 2. Enforce all mandatory columns are present and not empty
                     mandatory_cols = [
                         "SBU", "Account Name", "Opportunity Name", "SST Sales Stage", "Stage Description",
                         "Type of Business", "Account Engagement", "Client Relationship", "Deal Coach",
-                        "References", "Solution Strength", "Client Impression", "Orals Score", "Price Alignment"
+                        "References", "Solution Strength", "Client Impression", "Orals Score", "Price Alignment",
+                        tcv_col
                     ]
-                    mandatory_cols.append(tcv_col)
                     
                     # Check if any mandatory column is missing entirely
                     missing_cols = [col for col in mandatory_cols if col not in raw_df.columns]
