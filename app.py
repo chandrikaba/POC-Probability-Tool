@@ -635,6 +635,7 @@ elif page == "🔮 Predictions":
                     standard_map = {col.lower(): col for col in standard_cols}
                     standard_map["expected tcv ($mn) "] = "Expected TCV ($Mn)"
                     standard_map["expected tcv"] = "Expected TCV ($Mn)"
+                    standard_map["sales description"] = "Stage Description"
                     
                     # Rename columns in raw_df that match standard columns case-insensitively
                     new_columns = []
@@ -664,7 +665,9 @@ elif page == "🔮 Predictions":
                         
                     # Check for empty cells in any of the mandatory columns (only for Active deals)
                     raw_df["Stage Description"] = raw_df["Stage Description"].astype(str).str.strip()
-                    active_rows = raw_df[raw_df["Stage Description"].str.lower() == "active"]
+                    inactive_statuses = ["won", "lost", "aborted", "hold", "nan", "none", ""]
+                    active_mask = ~raw_df["Stage Description"].str.lower().isin(inactive_statuses)
+                    active_rows = raw_df[active_mask]
                     
                     validation_warnings = []
                     for col in mandatory_cols:
@@ -714,6 +717,14 @@ elif page == "🔮 Predictions":
                             
                             # Preprocessing - same as training
                             X_input = raw_df.drop(columns=[c for c in drop_cols if c in raw_df.columns], errors="ignore").copy()
+                            
+                            # Convert columns to match expected types from training
+                            for col in X_input.columns:
+                                if col in expected_types:
+                                    if expected_types[col] in ['int64', 'float64']:
+                                        X_input[col] = pd.to_numeric(X_input[col], errors='coerce')
+                                    else:
+                                        X_input[col] = X_input[col].astype(str)
                             
                             # --- Data Cleaning & Normalization (MATCHING TRAINING SCRIPT) ---
                             normalization_map = {
@@ -788,6 +799,8 @@ elif page == "🔮 Predictions":
                                     if col not in numeric_cols: numeric_cols.append(col)
                                     
                             for col in categorical_cols:
+                                X_input[col] = X_input[col].astype(str).str.strip()
+                                X_input[col] = X_input[col].replace({'nan': np.nan, 'None': np.nan, '': np.nan, 'NaN': np.nan})
                                 X_input[col] = X_input[col].fillna("UNKNOWN")
                                 
                             for col in numeric_cols:
@@ -799,7 +812,8 @@ elif page == "🔮 Predictions":
                                     
                             # Determine Active vs Non-Active Deals based on Stage Description
                             raw_df["Stage Description"] = raw_df["Stage Description"].astype(str).str.strip()
-                            active_mask = raw_df["Stage Description"].str.lower() == "active"
+                            inactive_statuses = ["won", "lost", "aborted", "hold", "nan", "none", ""]
+                            active_mask = ~raw_df["Stage Description"].str.lower().isin(inactive_statuses)
                             non_active_mask = ~active_mask
                             
                             # Initialize output columns in result_df

@@ -237,6 +237,7 @@ async def predict_deal_outcomes(file: UploadFile = File(..., description="Excel 
         standard_map = {col.lower(): col for col in standard_cols}
         standard_map["expected tcv ($mn) "] = "Expected TCV ($Mn)"
         standard_map["expected tcv"] = "Expected TCV ($Mn)"
+        standard_map["sales description"] = "Stage Description"
         
         # Rename columns in raw_df that match standard columns case-insensitively
         new_columns = []
@@ -265,7 +266,9 @@ async def predict_deal_outcomes(file: UploadFile = File(..., description="Excel 
             
         # Check for empty cells in any of the mandatory columns (only for Active deals)
         raw_df["Stage Description"] = raw_df["Stage Description"].astype(str).str.strip()
-        active_rows = raw_df[raw_df["Stage Description"].str.lower() == "active"]
+        inactive_statuses = ["won", "lost", "aborted", "hold", "nan", "none", ""]
+        active_mask = ~raw_df["Stage Description"].str.lower().isin(inactive_statuses)
+        active_rows = raw_df[active_mask]
         
         for col in mandatory_cols:
             if col in raw_df.columns:
@@ -342,7 +345,8 @@ async def predict_deal_outcomes(file: UploadFile = File(..., description="Excel 
                 
         # Determine Active vs Non-Active Deals based on Stage Description
         raw_df["Stage Description"] = raw_df["Stage Description"].astype(str).str.strip()
-        active_mask = raw_df["Stage Description"].str.lower() == "active"
+        inactive_statuses = ["won", "lost", "aborted", "hold", "nan", "none", ""]
+        active_mask = ~raw_df["Stage Description"].str.lower().isin(inactive_statuses)
         non_active_mask = ~active_mask
         
         # Initialize output columns in result_df
