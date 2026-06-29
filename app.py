@@ -237,9 +237,15 @@ with st.sidebar:
         nav_options.insert(1, "📁 Data Generation")
         nav_options.insert(2, "🤖 Model Training")
     
+    # Determine default page index if URL query parameter is present
+    default_index = 0
+    if "show_calc" in st.query_params and "🔮 Predictions" in nav_options:
+        default_index = nav_options.index("🔮 Predictions")
+        
     page = st.radio(
         "Select a page:",
         nav_options,
+        index=default_index,
         label_visibility="collapsed"
     )
     
@@ -496,17 +502,25 @@ elif page == "🤖 Model Training":
 
 # Predictions Page
 elif page == "🔮 Predictions":
-    st.markdown('<div class="section-header">Predict Deal Outcomes</div>', unsafe_allow_html=True)
-    
     # Check if we need to display deal calculation details
     if "show_calc" in st.query_params:
         crm_id = st.query_params["show_calc"]
         selected_deal = None
         
+        # Helper function to match CRM IDs robustly (handling float representations like 100003.0)
+        def match_crm_id(val1, val2):
+            try:
+                v1 = str(int(float(str(val1).strip())))
+                v2 = str(int(float(str(val2).strip())))
+                return v1 == v2
+            except (ValueError, TypeError):
+                return str(val1).strip().lower() == str(val2).strip().lower()
+        
         # 1. Check if we have predicted_df in session state
         if 'predicted_df' in st.session_state and st.session_state.predicted_df is not None:
             df_to_search = st.session_state.predicted_df
-            match = df_to_search[df_to_search['CRM ID'].astype(str).str.strip() == str(crm_id).strip()]
+            mask = df_to_search['CRM ID'].apply(lambda x: match_crm_id(x, crm_id))
+            match = df_to_search[mask]
             if not match.empty:
                 selected_deal = match.iloc[0]
                 
@@ -514,7 +528,8 @@ elif page == "🔮 Predictions":
         if selected_deal is None and st.session_state.last_prediction_file and os.path.exists(st.session_state.last_prediction_file):
             try:
                 df_latest = pd.read_excel(st.session_state.last_prediction_file)
-                match = df_latest[df_latest['CRM ID'].astype(str).str.strip() == str(crm_id).strip()]
+                mask = df_latest['CRM ID'].apply(lambda x: match_crm_id(x, crm_id))
+                match = df_latest[mask]
                 if not match.empty:
                     selected_deal = match.iloc[0]
             except Exception:
@@ -527,7 +542,8 @@ elif page == "🔮 Predictions":
             for file in pred_files[:5]:
                 try:
                     df_latest = pd.read_excel(os.path.join(OUTPUT_DIR, file))
-                    match = df_latest[df_latest['CRM ID'].astype(str).str.strip() == str(crm_id).strip()]
+                    mask = df_latest['CRM ID'].apply(lambda x: match_crm_id(x, crm_id))
+                    match = df_latest[mask]
                     if not match.empty:
                         selected_deal = match.iloc[0]
                         break
@@ -583,9 +599,44 @@ elif page == "🔮 Predictions":
                             "Max Points Possible": d["max_pts"]
                         })
                 st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
+                
+                # Add Scoring Methodology Rubric Explainer
+                with st.expander("💡 View Business Logic Scoring Rubric & Formula", expanded=True):
+                     st.markdown(r"""
+                     The **Business Logic Score** is calculated as the sum of points awarded across **11 parameters**, grouped into **5 categories** (totaling up to **100 maximum points**):
+                     
+                     ### 📊 Formula
+                     
+                     $$\text{Business Logic Score (\%)} = \left( \frac{\text{Total Points Awarded}}{\text{Maximum Possible Points (100)}} \right) \times 100\%$$
+                     
+                     *In plain text:*  
+                     **Business Logic Score (%)** = (Total Points Awarded / 100) × 100%
+                     
+                     *(Note: Since the maximum possible score is exactly 100 points, your total points awarded directly equals your percentage score.)*
+                     
+                     ### 📋 Point Distribution Rubric
+                     
+                     | Category | Parameter | Input Value | Points Awarded | Max Points |
+                     | :--- | :--- | :--- | :---: | :---: |
+                     | **Relationship**<br>*(Max 30 pts)* | **Account Engagement** | High (Existing+Good)<br>Medium (Existing+Poor)<br>Low (New Account) / Empty | **10**<br>**5**<br>**0** | 10 |
+                     | | **Client Relationship** | Strong<br>Neutral<br>Weak / Empty | **10**<br>**5**<br>**0** | 10 |
+                     | | **Deal Coach** | Active & Available<br>Passive<br>Not Available / Empty | **10**<br>**5**<br>**0** | 10 |
+                     | **Competition**<br>*(Max 25 pts)* | **Bidder Rank** | Top<br>Middle<br>Bottom / Empty | **15**<br>**5**<br>**0** | 15 |
+                     | | **Incumbency Share** | High (>50%)<br>Medium (20-50%)<br>Low (<20%) / None / Empty | **10**<br>**5**<br>**0** | 10 |
+                     | **Solution**<br>*(Max 20 pts)* | **References** | Strong (Domain+Tech)<br>Average<br>Weak/None / Empty | **7**<br>**3**<br>**0** | 7 |
+                     | | **Solution Strength** | Strong (Covers all)<br>Average (Gaps)<br>Weak / Empty | **7**<br>**3**<br>**0** | 7 |
+                     | | **Client Impression** | Positive<br>Neutral<br>Negative / Empty | **6**<br>**3**<br>**0** | 6 |
+                     | **Orals**<br>*(Max 15 pts)* | **Orals Score** | Strong<br>At Par<br>Weak / Empty | **15**<br>**8**<br>**0** | 15 |
+                     | **Price**<br>*(Max 10 pts)* | **Price Alignment** | On par with Client Budget<br>Above Client Budget<br>Above Client Budget with Rationale/Caveats<br>Client Budget Info not available / Empty | **5**<br>**2**<br>**0**<br>**0** | 5 |
+                     | | **Price Position** | Lowest<br>Competitive<br>Expensive / Empty | **5**<br>**2**<br>**0** | 5 |
+                     """)
                 st.markdown("---")
         else:
             st.warning(f"Could not find calculation details for CRM ID: {crm_id}. Please run the prediction first.")
+            
+        st.stop()
+        
+    st.markdown('<div class="section-header">Predict Deal Outcomes</div>', unsafe_allow_html=True)
     
     if not st.session_state.model_trained:
         st.markdown("""
@@ -854,14 +905,6 @@ elif page == "🔮 Predictions":
                                 elif pct >= 41: return "Medium"
                                 else: return "Low"
                                 
-                            # Get base URL for links
-                            try:
-                                host = st.context.headers.get("host", "localhost:8501")
-                                protocol = "https" if st.context.headers.get("x-forwarded-proto") == "https" else "http"
-                                base_url = f"{protocol}://{host}"
-                            except Exception:
-                                base_url = "http://localhost:8501"
-                                
                             # Process Active Deals
                             if active_mask.any():
                                 X_input_active = X_input[active_mask].copy()
@@ -878,9 +921,9 @@ elif page == "🔮 Predictions":
                                 result_df.loc[active_mask, "Business Logic Status"] = active_business_scores.apply(get_logic_status)
                                 result_df.loc[active_mask, "Predicted Deal Status"] = pred_labels_active
                                 
-                                # Business Logic Score formatted as hyperlink URL
+                                # Business Logic Score formatted as relative hyperlink URL
                                 result_df.loc[active_mask, "Business Logic Score"] = [
-                                    f"{base_url}/?show_calc={crm_id}&score={int(score)}%"
+                                    f"/?show_calc={crm_id}&score={int(score)}%"
                                     for crm_id, score in zip(raw_df.loc[active_mask, "CRM ID"], active_business_scores)
                                 ]
                                 
@@ -915,7 +958,7 @@ elif page == "🔮 Predictions":
                             export_df = result_df.copy()
                             for idx, row in export_df.iterrows():
                                 score_val = row["Business Logic Score"]
-                                if pd.notna(score_val) and str(score_val).startswith("http"):
+                                if pd.notna(score_val) and ("show_calc=" in str(score_val) or str(score_val).startswith("http") or str(score_val).startswith("/")):
                                     match = re.search(r"score=([^&]*)", str(score_val))
                                     if match:
                                         export_df.at[idx, "Business Logic Score"] = match.group(1)
