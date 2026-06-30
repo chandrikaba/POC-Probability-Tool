@@ -401,11 +401,10 @@ async def predict_deal_outcomes(file: UploadFile = File(..., description="Excel 
             
             result_df.loc[active_mask, "Business Logic Status"] = active_business_scores.apply(get_logic_status)
             result_df.loc[active_mask, "Business Logic Score"] = [f"{int(s)}%" for s in active_business_scores]
-            result_df.loc[active_mask, "Predicted Deal Status"] = pred_labels_active
             
-            win_idx = list(le.classes_).index("Won") if "Won" in list(le.classes_) else 0
-            active_win_probs = pred_probs_active[:, win_idx]
-            result_df.loc[active_mask, "Win Probability"] = [get_prob_category(p) for p in active_win_probs]
+            # Override Predicted Deal Status and Win Probability based on Business Logic Score to align ML output with business rules
+            result_df.loc[active_mask, "Predicted Deal Status"] = result_df.loc[active_mask, "Business Logic Status"]
+            result_df.loc[active_mask, "Win Probability"] = [get_prob_category(score / 100.0) for score in active_business_scores]
             
             for idx, class_name in enumerate(le.classes_):
                 result_df.loc[active_mask, f"Probability_{class_name}"] = [

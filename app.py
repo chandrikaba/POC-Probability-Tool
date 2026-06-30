@@ -919,7 +919,9 @@ elif page == "🔮 Predictions":
                                 active_business_scores = X_input_active.apply(calculate_business_score, axis=1)
                                 
                                 result_df.loc[active_mask, "Business Logic Status"] = active_business_scores.apply(get_logic_status)
-                                result_df.loc[active_mask, "Predicted Deal Status"] = pred_labels_active
+                                
+                                # Override Predicted Deal Status and Win Probability based on Business Logic Score to align ML output with business rules
+                                result_df.loc[active_mask, "Predicted Deal Status"] = result_df.loc[active_mask, "Business Logic Status"]
                                 
                                 # Business Logic Score formatted as relative hyperlink URL
                                 result_df.loc[active_mask, "Business Logic Score"] = [
@@ -927,9 +929,8 @@ elif page == "🔮 Predictions":
                                     for crm_id, score in zip(raw_df.loc[active_mask, "CRM ID"], active_business_scores)
                                 ]
                                 
-                                win_idx = list(le.classes_).index("Won") if "Won" in list(le.classes_) else 0
-                                active_win_probs = pred_probs_active[:, win_idx]
-                                result_df.loc[active_mask, "Win Probability"] = [get_prob_category(p) for p in active_win_probs]
+                                # Set Win Probability category based on Business Logic Score
+                                result_df.loc[active_mask, "Win Probability"] = [get_prob_category(score / 100.0) for score in active_business_scores]
                                 
                                 for idx, class_name in enumerate(le.classes_):
                                     result_df.loc[active_mask, f"Probability_{class_name}"] = [
@@ -1115,7 +1116,7 @@ elif page == "📈 Audit Trail":
                     names='Status', 
                     title='Overall Predicted Deal Outcomes',
                     color='Status',
-                    color_discrete_map={'Won': '#2ecc71', 'Lost': '#e74c3c', 'Aborted': '#95a5a6'}
+                    color_discrete_map={'Won': '#2ecc71', 'Lost': '#e74c3c', 'Aborted': '#95a5a6', 'Aborted/Risk': '#95a5a6'}
                 )
                 st.plotly_chart(fig_pie, use_container_width=True)
             
@@ -1131,7 +1132,7 @@ elif page == "📈 Audit Trail":
                     y='Count', 
                     color='Predicted Deal Status',
                     title='Daily Prediction Volume by Outcome',
-                    color_discrete_map={'Won': '#2ecc71', 'Lost': '#e74c3c', 'Aborted': '#95a5a6'}
+                    color_discrete_map={'Won': '#2ecc71', 'Lost': '#e74c3c', 'Aborted': '#95a5a6', 'Aborted/Risk': '#95a5a6'}
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
             
