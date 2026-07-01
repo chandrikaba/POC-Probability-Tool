@@ -19,23 +19,82 @@ from sklearn.preprocessing import LabelEncoder
 
 import plotly.express as px
 
-def get_deal_score_breakdown(row):
-    # Map row values using ordinal_mappings if they are text
-    ordinal_mappings = {
-        "Account Engagement": {"High (Existing+Good)": 5, "Medium (Existing+Poor)": 3, "Low (New Account)": 0},
-        "Client Relationship": {"Strong": 5, "Neutral": 3, "Weak": 0},
-        "Deal Coach": {"Active & Available": 5, "Passive": 3, "Not Available": 0},
-        "Bidder Rank": {"Top": 5, "Middle": 3, "Bottom": 0},
-        "Incumbency Share": {"High (>50%)": 5, "Medium (20-50%)": 3, "Low (<20%)": 0, "None": 0},
-        "References": {"Strong (Domain+Tech)": 5, "Average": 3, "Weak/None": 0},
-        "Solution Strength": {"Strong (Covers all)": 5, "Average (Gaps)": 3, "Weak": 0},
-        "Client Impression": {"Positive": 5, "Neutral": 3, "Negative": 0},
-        "Orals Score": {"Strong": 5, "At Par": 3, "Weak": 0},
-        "Price Alignment": {"On par with Client Budget": 5, "Above Client Budget with Rationale/Caveats": 3, "Above Client Budget": 0, "Client Budget Info not available": 2},
-        "Price Position": {"Lowest": 5, "Competitive": 3, "Expensive": 0},
-        "Current RFP Stage": {"Negotiation": 15, "Defence Cleared": 10, "Proposal Submitted": 5, "RFP Received": 0}
+# Global mappings for normalization and scoring
+NORMALIZATION_MAP = {
+    "Account Engagement": {
+        "high": "High (Existing+Good)", "good": "High (Existing+Good)",
+        "medium": "Medium (Existing+Poor)", "average": "Medium (Existing+Poor)",
+        "low": "Low (New Account)", "new": "Low (New Account)", "none": "Low (New Account)"
+    },
+    "Client Relationship": {
+        "high": "Strong", "strong": "Strong", "good": "Strong",
+        "medium": "Neutral", "neutral": "Neutral", "average": "Neutral",
+        "low": "Weak", "weak": "Weak", "poor": "Weak", "new": "Weak", "none": "Weak"
+    },
+    "Deal Coach": {
+        "active": "Active & Available", "available": "Active & Available",
+        "passive": "Passive",
+        "not": "Not Available", "none": "Not Available"
+    },
+    "Incumbency Share": {
+        "high": "High (>50%)", ">50%": "High (>50%)",
+        "medium": "Medium (20-50%)", "20-50%": "Medium (20-50%)",
+        "low": "Low (<20%)", "<20%": "Low (<20%)", "none": "None"
+    },
+    "Bidder Rank": {
+        "1": "Top", "top": "Top", "first": "Top", "high": "Top",
+        "2": "Middle", "middle": "Middle", "second": "Middle", "medium": "Middle",
+        "3": "Bottom", "bottom": "Bottom", "last": "Bottom", "low": "Bottom"
+    },
+    "References": {
+        "strong": "Strong (Domain+Tech)",
+        "average": "Average", "medium": "Average",
+        "weak": "Weak/None", "none": "Weak/None"
+    },
+    "Solution Strength": {
+        "high": "Strong (Covers all)", "strong": "Strong (Covers all)",
+        "medium": "Average (Gaps)", "average": "Average (Gaps)",
+        "low": "Weak", "weak": "Weak"
+    },
+    "Client Impression": {
+        "positive": "Positive", "good": "Positive",
+        "neutral": "Neutral", "medium": "Neutral",
+        "negative": "Negative", "bad": "Negative"
+    },
+    "Orals Score": {
+        "strong": "Strong", "high": "Strong",
+        "par": "At Par", "medium": "At Par", "average": "At Par",
+        "weak": "Weak", "low": "Weak"
+    },
+    "Price Alignment": {
+        "on par": "On par with Client Budget", "budget": "On par with Client Budget", "aligned": "On par with Client Budget", "high": "On par with Client Budget",
+        "caveats": "Above Client Budget with Rationale/Caveats", "rationale": "Above Client Budget with Rationale/Caveats", "medium": "Above Client Budget with Rationale/Caveats",
+        "above": "Above Client Budget", "deviating": "Above Client Budget", "low": "Above Client Budget",
+        "info not available": "Client Budget Info not available", "no intel": "Client Budget Info not available"
+    },
+    "Price Position": {
+        "lowest": "Lowest", "low": "Lowest",
+        "competitive": "Competitive", "medium": "Competitive",
+        "expensive": "Expensive", "high": "Expensive"
     }
-    
+}
+
+ORDINAL_MAPPINGS = {
+    "Account Engagement": {"High (Existing+Good)": 5, "Medium (Existing+Poor)": 3, "Low (New Account)": 0},
+    "Client Relationship": {"Strong": 5, "Neutral": 3, "Weak": 0},
+    "Deal Coach": {"Active & Available": 5, "Passive": 3, "Not Available": 0},
+    "Bidder Rank": {"Top": 5, "Middle": 3, "Bottom": 0},
+    "Incumbency Share": {"High (>50%)": 5, "Medium (20-50%)": 3, "Low (<20%)": 0, "None": 0},
+    "References": {"Strong (Domain+Tech)": 5, "Average": 3, "Weak/None": 0},
+    "Solution Strength": {"Strong (Covers all)": 5, "Average (Gaps)": 3, "Weak": 0},
+    "Client Impression": {"Positive": 5, "Neutral": 3, "Negative": 0},
+    "Orals Score": {"Strong": 5, "At Par": 3, "Weak": 0},
+    "Price Alignment": {"On par with Client Budget": 5, "Above Client Budget with Rationale/Caveats": 3, "Above Client Budget": 0, "Client Budget Info not available": 2},
+    "Price Position": {"Lowest": 5, "Competitive": 3, "Expensive": 0},
+    "Current RFP Stage": {"Negotiation": 15, "Defence Cleared": 10, "Proposal Submitted": 5, "RFP Received": 0}
+}
+
+def get_deal_score_breakdown(row):
     # We need to get the mapped value (numeric) for each attribute in the row
     def get_mapped_val(col, default_val=2):
         val = row.get(col)
@@ -44,9 +103,16 @@ def get_deal_score_breakdown(row):
         if isinstance(val, (int, float, np.integer, np.floating)):
             return float(val)
         val_str = str(val).strip()
-        # Look up in normalization maps if needed, or direct mapping
+        
+        # Apply normalization if present in NORMALIZATION_MAP
+        norm_map = NORMALIZATION_MAP.get(col, {})
+        for key, target in norm_map.items():
+            if key in val_str.lower():
+                val_str = target
+                break
+                
         # First check direct mapping
-        mapping = ordinal_mappings.get(col, {})
+        mapping = ORDINAL_MAPPINGS.get(col, {})
         if val_str in mapping:
             return mapping[val_str]
         # Check substring match
@@ -59,33 +125,43 @@ def get_deal_score_breakdown(row):
     eng_val = row.get("Account Engagement", "Unknown")
     eng_pts = {5: 10, 3: 5, 2: 2, 0: 0}.get(get_mapped_val("Account Engagement"), 0)
     
+    # Client Relationship
     rel_val = row.get("Client Relationship", "Unknown")
     rel_pts = {5: 10, 3: 5, 2: 2, 0: 0}.get(get_mapped_val("Client Relationship"), 0)
     
+    # Deal Coach
     coach_val = row.get("Deal Coach", "Unknown")
     coach_pts = {5: 10, 3: 5, 2: 2, 0: 0}.get(get_mapped_val("Deal Coach"), 0)
     
+    # Bidder Rank
     rank_val = row.get("Bidder Rank", "Unknown")
     rank_pts = {5: 15, 3: 5, 2: 2, 0: 0}.get(get_mapped_val("Bidder Rank"), 0)
     
+    # Incumbency Share
     inc_val = row.get("Incumbency Share", "Unknown")
     inc_pts = {5: 10, 3: 5, 2: 2, 0: 0}.get(get_mapped_val("Incumbency Share"), 0)
     
+    # References
     ref_val = row.get("References", "Unknown")
     ref_pts = {5: 7, 3: 3, 2: 1, 0: 0}.get(get_mapped_val("References"), 0)
     
+    # Solution Strength
     sol_val = row.get("Solution Strength", "Unknown")
     sol_pts = {5: 7, 3: 3, 2: 1, 0: 0}.get(get_mapped_val("Solution Strength"), 0)
     
+    # Client Impression
     imp_val = row.get("Client Impression", "Unknown")
     imp_pts = {5: 6, 3: 3, 2: 1, 0: 0}.get(get_mapped_val("Client Impression"), 0)
     
+    # Orals Score
     orals_val = row.get("Orals Score", "Unknown")
     orals_pts = {5: 15, 3: 8, 2: 4, 0: 0}.get(get_mapped_val("Orals Score"), 0)
     
+    # Price Alignment
     pa_val = row.get("Price Alignment", "Unknown")
-    pa_pts = {5: 5, 0: 2, 2: 0}.get(get_mapped_val("Price Alignment", 2), 0)
+    pa_pts = {5: 5, 3: 3, 2: 2, 0: 0}.get(get_mapped_val("Price Alignment", 2), 0)
     
+    # Price Position
     pp_val = row.get("Price Position", "Unknown")
     pp_pts = {5: 5, 3: 2, 0: 0}.get(get_mapped_val("Price Position"), 0)
     
@@ -629,7 +705,7 @@ elif page == "🔮 Predictions":
                      | **Orals**<br>*(Max 15 pts)* | **Orals Score** | Strong<br>At Par<br>Weak / Empty | **15**<br>**8**<br>**0** | 15 |
                      | **Price**<br>*(Max 10 pts)* | **Price Alignment** | On par with Client Budget<br>Above Client Budget<br>Above Client Budget with Rationale/Caveats<br>Client Budget Info not available / Empty | **5**<br>**2**<br>**0**<br>**0** | 5 |
                      | | **Price Position** | Lowest<br>Competitive<br>Expensive / Empty | **5**<br>**2**<br>**0** | 5 |
-                     """)
+                     """, unsafe_allow_html=True)
                 st.markdown("---")
         else:
             st.warning(f"Could not find calculation details for CRM ID: {crm_id}. Please run the prediction first.")
@@ -778,39 +854,7 @@ elif page == "🔮 Predictions":
                                         X_input[col] = X_input[col].astype(str)
                             
                             # --- Data Cleaning & Normalization (MATCHING TRAINING SCRIPT) ---
-                            normalization_map = {
-                                "Account Engagement": {
-                                    "high": "High (Existing+Good)", "good": "High (Existing+Good)",
-                                    "medium": "Medium (Existing+Poor)", "average": "Medium (Existing+Poor)",
-                                    "low": "Low (New Account)", "new": "Low (New Account)", "none": "Low (New Account)"
-                                },
-                                "Client Relationship": {
-                                    "high": "Strong", "strong": "Strong", "good": "Strong",
-                                    "medium": "Neutral", "neutral": "Neutral", "average": "Neutral",
-                                    "low": "Weak", "weak": "Weak", "poor": "Weak", "new": "Weak", "none": "Weak"
-                                },
-                                "Incumbency Share": {
-                                    "high": "High (>50%)", ">50%": "High (>50%)",
-                                    "medium": "Medium (20-50%)", "20-50%": "Medium (20-50%)",
-                                    "low": "Low (<20%)", "<20%": "Low (<20%)", "none": "None"
-                                },
-                                "Bidder Rank": {
-                                    "1": "Top", "top": "Top", "first": "Top",
-                                    "2": "Middle", "middle": "Middle", "second": "Middle",
-                                    "3": "Bottom", "bottom": "Bottom", "last": "Bottom"
-                                },
-                                "Price Alignment": {
-                                    "on par": "On par with Client Budget", "budget": "On par with Client Budget", "aligned": "On par with Client Budget",
-                                    "caveats": "Above Client Budget with Rationale/Caveats", "rationale": "Above Client Budget with Rationale/Caveats",
-                                    "above": "Above Client Budget", "deviating": "Above Client Budget",
-                                    "info not available": "Client Budget Info not available", "no intel": "Client Budget Info not available"
-                                },
-                                "Solution Strength": {
-                                    "high": "Strong (Covers all)", "strong": "Strong (Covers all)",
-                                    "medium": "Average (Gaps)", "average": "Average (Gaps)",
-                                    "low": "Weak", "weak": "Weak"
-                                }
-                            }
+                            normalization_map = NORMALIZATION_MAP
                             
                             for col, mapping in normalization_map.items():
                                 if col in X_input.columns:
@@ -828,20 +872,7 @@ elif page == "🔮 Predictions":
                             categorical_cols = X_input.select_dtypes(include=['object']).columns.tolist()
                             
                             # --- BUSINESS LOGIC: Explicit Ordinal Mapping ---
-                            ordinal_mappings = {
-                                "Account Engagement": {"High (Existing+Good)": 5, "Medium (Existing+Poor)": 3, "Low (New Account)": 0},
-                                "Client Relationship": {"Strong": 5, "Neutral": 3, "Weak": 0},
-                                "Deal Coach": {"Active & Available": 5, "Passive": 3, "Not Available": 0},
-                                "Bidder Rank": {"Top": 5, "Middle": 3, "Bottom": 0},
-                                "Incumbency Share": {"High (>50%)": 5, "Medium (20-50%)": 3, "Low (<20%)": 0, "None": 0},
-                                "References": {"Strong (Domain+Tech)": 5, "Average": 3, "Weak/None": 0},
-                                "Solution Strength": {"Strong (Covers all)": 5, "Average (Gaps)": 3, "Weak": 0},
-                                "Client Impression": {"Positive": 5, "Neutral": 3, "Negative": 0},
-                                "Orals Score": {"Strong": 5, "At Par": 3, "Weak": 0},
-                                "Price Alignment": {"On par with Client Budget": 5, "Above Client Budget with Rationale/Caveats": 3, "Above Client Budget": 0, "Client Budget Info not available": 2},
-                                "Price Position": {"Lowest": 5, "Competitive": 3, "Expensive": 0},
-                                "Current RFP Stage": {"Negotiation": 15, "Defence Cleared": 10, "Proposal Submitted": 5, "RFP Received": 0}
-                            }
+                            ordinal_mappings = ORDINAL_MAPPINGS
                             
                             for col, mapping in ordinal_mappings.items():
                                 if col in X_input.columns:
@@ -880,16 +911,16 @@ elif page == "🔮 Predictions":
                             # Define the helper score calculators locally
                             def calculate_business_score(row):
                                 score = 0
-                                score += {5: 10, 3: 5, 2:2, 0: 0}.get(row.get("Account Engagement", 0), 0)
-                                score += {5: 10, 3: 5, 2:2, 0: 0}.get(row.get("Client Relationship", 0), 0)
-                                score += {5: 10, 3: 5, 2:2, 0: 0}.get(row.get("Deal Coach", 0), 0)
-                                score += {5: 15, 3: 5, 2:2, 0: 0}.get(row.get("Bidder Rank", 0), 0)
-                                score += {5: 10, 3: 5, 2:2, 0: 0}.get(row.get("Incumbency Share", 0), 0)
-                                score += {5: 7, 3: 3, 2:1, 0: 0}.get(row.get("References", 0), 0)
-                                score += {5: 7, 3: 3, 2:1, 0: 0}.get(row.get("Solution Strength", 0), 0)
-                                score += {5: 6, 3: 3, 2:1, 0: 0}.get(row.get("Client Impression", 0), 0)
-                                score += {5: 15, 3: 8, 2:4, 0: 0}.get(row.get("Orals Score", 0), 0)
-                                score += {5: 5, 0: 2, 2: 0}.get(row.get("Price Alignment", 0), 0)
+                                score += {5: 10, 3: 5, 2: 2, 0: 0}.get(row.get("Account Engagement", 0), 0)
+                                score += {5: 10, 3: 5, 2: 2, 0: 0}.get(row.get("Client Relationship", 0), 0)
+                                score += {5: 10, 3: 5, 2: 2, 0: 0}.get(row.get("Deal Coach", 0), 0)
+                                score += {5: 15, 3: 5, 2: 2, 0: 0}.get(row.get("Bidder Rank", 0), 0)
+                                score += {5: 10, 3: 5, 2: 2, 0: 0}.get(row.get("Incumbency Share", 0), 0)
+                                score += {5: 7, 3: 3, 2: 1, 0: 0}.get(row.get("References", 0), 0)
+                                score += {5: 7, 3: 3, 2: 1, 0: 0}.get(row.get("Solution Strength", 0), 0)
+                                score += {5: 6, 3: 3, 2: 1, 0: 0}.get(row.get("Client Impression", 0), 0)
+                                score += {5: 15, 3: 8, 2: 4, 0: 0}.get(row.get("Orals Score", 0), 0)
+                                score += {5: 5, 3: 3, 2: 2, 0: 0}.get(row.get("Price Alignment", 0), 0)
                                 score += {5: 5, 3: 2, 0: 0}.get(row.get("Price Position", 0), 0)
                                 return score
                                 

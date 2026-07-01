@@ -33,6 +33,81 @@ MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "xgb_classifier.pkl")
 SYNTHETIC_DATA_PATH = os.path.join(PROJECT_ROOT, "data", "output", "synthetic_data_v3.xlsx")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data", "output")
 
+# Global mappings for normalization and scoring
+NORMALIZATION_MAP = {
+    "Account Engagement": {
+        "high": "High (Existing+Good)", "good": "High (Existing+Good)",
+        "medium": "Medium (Existing+Poor)", "average": "Medium (Existing+Poor)",
+        "low": "Low (New Account)", "new": "Low (New Account)", "none": "Low (New Account)"
+    },
+    "Client Relationship": {
+        "high": "Strong", "strong": "Strong", "good": "Strong",
+        "medium": "Neutral", "neutral": "Neutral", "average": "Neutral",
+        "low": "Weak", "weak": "Weak", "poor": "Weak", "new": "Weak", "none": "Weak"
+    },
+    "Deal Coach": {
+        "active": "Active & Available", "available": "Active & Available",
+        "passive": "Passive",
+        "not": "Not Available", "none": "Not Available"
+    },
+    "Incumbency Share": {
+        "high": "High (>50%)", ">50%": "High (>50%)",
+        "medium": "Medium (20-50%)", "20-50%": "Medium (20-50%)",
+        "low": "Low (<20%)", "<20%": "Low (<20%)", "none": "None"
+    },
+    "Bidder Rank": {
+        "1": "Top", "top": "Top", "first": "Top", "high": "Top",
+        "2": "Middle", "middle": "Middle", "second": "Middle", "medium": "Middle",
+        "3": "Bottom", "bottom": "Bottom", "last": "Bottom", "low": "Bottom"
+    },
+    "References": {
+        "strong": "Strong (Domain+Tech)",
+        "average": "Average", "medium": "Average",
+        "weak": "Weak/None", "none": "Weak/None"
+    },
+    "Solution Strength": {
+        "high": "Strong (Covers all)", "strong": "Strong (Covers all)",
+        "medium": "Average (Gaps)", "average": "Average (Gaps)",
+        "low": "Weak", "weak": "Weak"
+    },
+    "Client Impression": {
+        "positive": "Positive", "good": "Positive",
+        "neutral": "Neutral", "medium": "Neutral",
+        "negative": "Negative", "bad": "Negative"
+    },
+    "Orals Score": {
+        "strong": "Strong", "high": "Strong",
+        "par": "At Par", "medium": "At Par", "average": "At Par",
+        "weak": "Weak", "low": "Weak"
+    },
+    "Price Alignment": {
+        "on par": "On par with Client Budget", "budget": "On par with Client Budget", "aligned": "On par with Client Budget", "high": "On par with Client Budget",
+        "caveats": "Above Client Budget with Rationale/Caveats", "rationale": "Above Client Budget with Rationale/Caveats", "medium": "Above Client Budget with Rationale/Caveats",
+        "above": "Above Client Budget", "deviating": "Above Client Budget", "low": "Above Client Budget",
+        "info not available": "Client Budget Info not available", "no intel": "Client Budget Info not available"
+    },
+    "Price Position": {
+        "lowest": "Lowest", "low": "Lowest",
+        "competitive": "Competitive", "medium": "Competitive",
+        "expensive": "Expensive", "high": "Expensive"
+    }
+}
+
+ORDINAL_MAPPINGS = {
+    "Account Engagement": {"High (Existing+Good)": 5, "Medium (Existing+Poor)": 3, "Low (New Account)": 0},
+    "Client Relationship": {"Strong": 5, "Neutral": 3, "Weak": 0},
+    "Deal Coach": {"Active & Available": 5, "Passive": 3, "Not Available": 0},
+    "Bidder Rank": {"Top": 5, "Middle": 3, "Bottom": 0},
+    "Incumbency Share": {"High (>50%)": 5, "Medium (20-50%)": 3, "Low (<20%)": 0, "None": 0},
+    "References": {"Strong (Domain+Tech)": 5, "Average": 3, "Weak/None": 0},
+    "Solution Strength": {"Strong (Covers all)": 5, "Average (Gaps)": 3, "Weak": 0},
+    "Client Impression": {"Positive": 5, "Neutral": 3, "Negative": 0},
+    "Orals Score": {"Strong": 5, "At Par": 3, "Weak": 0},
+    "Price Alignment": {"On par with Client Budget": 5, "Above Client Budget with Rationale/Caveats": 3, "Above Client Budget": 0, "Client Budget Info not available": 2},
+    "Price Position": {"Lowest": 5, "Competitive": 3, "Expensive": 0},
+    "Current RFP Stage": {"Negotiation": 15, "Defence Cleared": 10, "Proposal Submitted": 5, "RFP Received": 0}
+}
+
 # Pydantic models for request/response
 class HealthResponse(BaseModel):
     status: str
@@ -314,6 +389,18 @@ async def predict_deal_outcomes(file: UploadFile = File(..., description="Excel 
             X_input[col] = X_input[col].replace({'nan': np.nan, 'None': np.nan, '': np.nan, 'NaN': np.nan})
             X_input[col] = X_input[col].fillna("UNKNOWN")
         
+        # Apply normalization mapping
+        for col, mapping in NORMALIZATION_MAP.items():
+            if col in X_input.columns:
+                def normalize_val(val):
+                    if pd.isna(val): return val
+                    s = str(val).lower().strip()
+                    for key, target in mapping.items():
+                        if key in s:
+                             return target
+                    return val
+                X_input[col] = X_input[col].apply(normalize_val)
+        
         # Impute numeric columns
         for col in numeric_cols:
             if X_input[col].isna().any():
@@ -323,23 +410,8 @@ async def predict_deal_outcomes(file: UploadFile = File(..., description="Excel 
                 X_input[col] = X_input[col].fillna(median_val)
                 
         # --- BUSINESS LOGIC: Explicit Ordinal Mapping ---
-        ordinal_mappings = {
-            "Account Engagement": {"High (Existing+Good)": 5, "Medium (Existing+Poor)": 3, "Low (New Account)": 0},
-            "Client Relationship": {"Strong": 5, "Neutral": 3, "Weak": 0},
-            "Deal Coach": {"Active & Available": 5, "Passive": 3, "Not Available": 0},
-            "Bidder Rank": {"Top": 5, "Middle": 3, "Bottom": 0},
-            "Incumbency Share": {"High (>50%)": 5, "Medium (20-50%)": 3, "Low (<20%)": 0, "None": 0},
-            "References": {"Strong (Domain+Tech)": 5, "Average": 3, "Weak/None": 0},
-            "Solution Strength": {"Strong (Covers all)": 5, "Average (Gaps)": 3, "Weak": 0},
-            "Client Impression": {"Positive": 5, "Neutral": 3, "Negative": 0},
-            "Orals Score": {"Strong": 5, "At Par": 3, "Weak": 0},
-            "Price Alignment": {"On par with Client Budget": 5, "Above Client Budget with Rationale/Caveats": 3, "Above Client Budget": 0, "Client Budget Info not available": 2},
-            "Price Position": {"Lowest": 5, "Competitive": 3, "Expensive": 0},
-            "Current RFP Stage": {"Negotiation": 15, "Defence Cleared": 10, "Proposal Submitted": 5, "RFP Received": 0}
-        }
-        
         # Map values to numbers for business logic calculations and predictions
-        for col, mapping in ordinal_mappings.items():
+        for col, mapping in ORDINAL_MAPPINGS.items():
             if col in X_input.columns:
                 X_input[col] = pd.to_numeric(X_input[col].map(mapping).fillna(2), errors='coerce').fillna(2)
                 
@@ -370,7 +442,7 @@ async def predict_deal_outcomes(file: UploadFile = File(..., description="Excel 
             score += {5: 7, 3: 3, 2: 1, 0: 0}.get(row.get("Solution Strength", 0), 0)
             score += {5: 6, 3: 3, 2: 1, 0: 0}.get(row.get("Client Impression", 0), 0)
             score += {5: 15, 3: 8, 2: 4, 0: 0}.get(row.get("Orals Score", 0), 0)
-            score += {5: 5, 0: 2, 2: 0}.get(row.get("Price Alignment", 0), 0)
+            score += {5: 5, 3: 3, 2: 2, 0: 0}.get(row.get("Price Alignment", 0), 0)
             score += {5: 5, 3: 2, 0: 0}.get(row.get("Price Position", 0), 0)
             return score
             
